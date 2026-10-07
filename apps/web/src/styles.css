@@ -1,0 +1,213 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #f6f7fb;
+  --foreground: #111427;
+  --card: #ffffff;
+  --card-foreground: #111427;
+  --popover: #ffffff;
+  --popover-foreground: #111427;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #eef0f7;
+  --secondary-foreground: #111427;
+  --muted: #eff1f6;
+  --muted-foreground: #646b85;
+  --accent: #eceafd;
+  --accent-foreground: #3730a3;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e3e6ef;
+  --input: #d8dce8;
+  --ring: #6366f1;
+  --pending: #d97706;
+  --progress: #0284c7;
+  --done: #059669;
+  --overdue: #e11d48;
+  --brand-amber: #f59e0b;
+  --radius: 0.85rem;
+}
+
+.dark {
+  --background: #0c0e1a;
+  --foreground: #e7e9f5;
+  --card: #141729;
+  --card-foreground: #e7e9f5;
+  --popover: #171a2e;
+  --popover-foreground: #e7e9f5;
+  --primary: #818cf8;
+  --primary-foreground: #0d0f2b;
+  --secondary: #1c2036;
+  --secondary-foreground: #e7e9f5;
+  --muted: #1b1f33;
+  --muted-foreground: #8e94b0;
+  --accent: #23264a;
+  --accent-foreground: #c7cbff;
+  --destructive: #f87171;
+  --destructive-foreground: #1b0707;
+  --border: #262b44;
+  --input: #2f3552;
+  --ring: #818cf8;
+  --pending: #fbbf24;
+  --progress: #38bdf8;
+  --done: #34d399;
+  --overdue: #fb7185;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-pending: var(--pending);
+  --color-progress: var(--progress);
+  --color-done: var(--done);
+  --color-overdue: var(--overdue);
+  --color-brand-amber: var(--brand-amber);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    overscroll-behavior-y: none;
+  }
+  input,
+  select,
+  textarea {
+    /* iOS zooms into inputs below 16px */
+    font-size: max(16px, 1em);
+  }
+  @media (min-width: 768px) {
+    input,
+    select,
+    textarea {
+      font-size: inherit;
+    }
+  }
+  button,
+  a {
+    touch-action: manipulation;
+  }
+  /* Grid items default to min-width:auto, so one long `truncate` line can
+     widen a single-column grid past the phone screen. Let them shrink. */
+  .grid > * {
+    min-width: 0;
+  }
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.bg-dot-pattern {
+  background-size: 22px 22px;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--primary) 16%, transparent) 1.3px,
+    transparent 1.3px
+  );
+}
+
+.text-gradient-primary {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark .text-gradient-primary {
+  background: linear-gradient(135deg, #a5b4fc 0%, #c4b5fd 55%, #fbbf24 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+@keyframes bell-ring {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0);
+  }
+  10% {
+    transform: rotate(14deg);
+  }
+  20% {
+    transform: rotate(-12deg);
+  }
+  30% {
+    transform: rotate(8deg);
+  }
+  40% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+}
+
+.animate-bell-ring {
+  transform-origin: 50% 12%;
+  animation: bell-ring 2.6s ease-in-out infinite;
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-bell-ring,
+  .animate-float-slow {
+    animation: none;
+  }
+}
