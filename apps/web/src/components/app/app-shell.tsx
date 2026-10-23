@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Bell,
   FolderKanban,
@@ -9,7 +9,7 @@ import {
   Plus,
   Search,
 } from "lucide-react";
-import type * as React from "react";
+import { type ReactNode, useEffect } from "react";
 import { Avatar } from "@/components/common/badges";
 import { Logo } from "@/components/common/logo";
 import { CategorySheet } from "@/components/events/category-sheet";
@@ -21,13 +21,67 @@ import { Button } from "@/components/ui/button";
 import { useLogout } from "@/hooks/use-auth";
 import { useLog, useTasks } from "@/hooks/use-data";
 import { useReminders } from "@/hooks/use-reminders";
+import { bindingText, useGlobalShortcuts } from "@/hooks/use-shortcuts";
 import { isOverdue } from "@/lib/format";
+import { syncNow } from "@/lib/offline/sync";
+import { SHORTCUTS } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import type { AppUser } from "@/stores/auth-store";
 import { useSheets } from "@/stores/sheet-store";
+import { useUiStore } from "@/stores/ui-store";
 import { CommandSearch } from "./command-search";
+import { InstallButton } from "./install-app";
 import { NAV } from "./nav-items";
+import { ShortcutKeys, ShortcutsDialog } from "./shortcuts";
+import { SyncStatus } from "./sync-status";
 import { UserMenu } from "./user-menu";
+
+/** Every keyboard shortcut's effect. */
+function useShortcutHandlers(addTask: () => void) {
+  const navigate = useNavigate();
+  const newEvent = useSheets((s) => s.newEvent);
+  const newPerson = useSheets((s) => s.newPerson);
+  const setSearch = useSheets((s) => s.setSearch);
+  const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
+  const go = (to: string) => () => navigate({ to });
+  useGlobalShortcuts({
+    addTask,
+    addEvent: newEvent,
+    addPerson: newPerson,
+    goDashboard: go("/dashboard"),
+    goTasks: go("/tasks"),
+    goEvents: go("/events"),
+    goCalendar: go("/calendar"),
+    goPeople: go("/people"),
+    goNotifications: go("/notifications"),
+    goSettings: go("/settings"),
+    search: () => setSearch(true),
+    syncNow: () => void syncNow(),
+    showShortcuts: () => setShortcutsOpen(true),
+    submitForm: () => {
+      // The form in the open sheet, else the one being typed in.
+      const form =
+        document.querySelector<HTMLFormElement>(
+          '[role="dialog"][data-state="open"] form',
+        ) ?? (document.activeElement as HTMLInputElement | null)?.form;
+      form?.requestSubmit();
+    },
+  });
+}
+
+/** `?new=task|event` (the installed app's shortcuts) opens the add sheet. */
+function useLaunchAction(addTask: () => void) {
+  const newEvent = useSheets((s) => s.newEvent);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const what = url.searchParams.get("new");
+    if (what === "task") addTask();
+    else if (what === "event") newEvent();
+    else return;
+    url.searchParams.delete("new");
+    history.replaceState(history.state, "", url);
+  }, []);
+}
 
 const TABS = [
   { to: "/dashboard", label: "Home", icon: LayoutDashboard },
@@ -50,7 +104,7 @@ export function AppShell({
   children,
 }: {
   user: AppUser;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   useReminders();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -61,11 +115,12 @@ export function AppShell({
   const unread = (useLog().data ?? []).filter((l) => !l.readAt).length;
   const open = tasks.filter((t) => t.status !== "done");
   const overdue = open.filter((t) => isOverdue(t)).length;
-  const current = NAV.find((n) => pathname.startsWith(n.to));
   // Quick-add inside an event/category pre-selects it.
   const [, eventId, categoryId] =
     pathname.match(/^\/events\/([^/]+)(?:\/([^/]+))?/) ?? [];
   const addTask = () => newTask({ eventId, categoryId });
+  useShortcutHandlers(addTask);
+  useLaunchAction(addTask);
 
   const badge = (to: string) =>
     to === "/tasks" ? open.length : to === "/notifications" ? unread : 0;
@@ -80,8 +135,17 @@ export function AppShell({
           </Link>
         </div>
         <div className="space-y-2 px-3">
-          <Button className="w-full" onClick={addTask}>
-            <Plus /> Add task
+          <Button
+            className="w-full"
+            onClick={addTask}
+            title={`Add task (${bindingText(SHORTCUTS.addTask)})`}
+          >
+            <Plus /> <span className="flex-1 text-left">Add task</span>
+            <ShortcutKeys
+              binding={SHORTCUTS.addTask}
+              compact
+              className="[&_kbd]:border-primary-foreground/30 [&_kbd]:bg-primary-foreground/15 [&_kbd]:text-primary-foreground"
+            />
           </Button>
           <button
             type="button"
@@ -136,6 +200,10 @@ export function AppShell({
             <p className="text-xs opacity-80">Uncle is waiting… clear them</p>
           </Link>
         )}
+        <div className="space-y-1 px-3 pb-2">
+          <InstallButton />
+          <SyncStatus />
+        </div>
         <div className="flex items-center gap-3 border-t p-4">
           <Avatar name={user.name} />
           <div className="min-w-0 flex-1">
@@ -160,12 +228,15 @@ export function AppShell({
         {/* Top bar */}
         <header className="pt-safe sticky top-0 z-30 border-b bg-background/85 backdrop-blur-lg">
           <div className="flex h-14 items-center justify-between gap-2 px-4 md:h-16 md:px-8">
+            {/* Phone: just who is logged in (no page title, no account
+                menu; Settings and Log out live under the More tab). */}
             <div className="flex min-w-0 items-center gap-2 md:hidden">
-              <img src="/logo.svg" alt="" className="size-8 rounded-[9px]" />
-              <span className="truncate text-lg font-bold">
-                {current?.label ??
-                  (pathname === "/more" ? "More" : "Task Uncle")}
-              </span>
+              <img
+                src="/logo.svg"
+                alt=""
+                className="size-8 shrink-0 rounded-[9px]"
+              />
+              <span className="truncate text-lg font-bold">{user.name}</span>
             </div>
             <p className="hidden text-sm text-muted-foreground md:block">
               {greeting()},{" "}
@@ -175,6 +246,9 @@ export function AppShell({
               👋
             </p>
             <div className="flex items-center gap-1">
+              <div className="md:hidden">
+                <SyncStatus compact />
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
@@ -200,7 +274,9 @@ export function AppShell({
                   )}
                 </Link>
               </Button>
-              <UserMenu user={user} />
+              <div className="hidden md:block">
+                <UserMenu user={user} />
+              </div>
             </div>
           </div>
         </header>
@@ -265,6 +341,7 @@ export function AppShell({
       <CategorySheet />
       <PersonSheet />
       <CommandSearch />
+      <ShortcutsDialog />
     </div>
   );
 }

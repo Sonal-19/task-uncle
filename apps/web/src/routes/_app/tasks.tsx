@@ -55,15 +55,12 @@ function TasksPage() {
   useEffect(() => {
     if (!search.task || tasksQ.isLoading) return;
     const id = search.task;
-    (async () => {
-      if (search.action) await applyTaskAction(id, search.action);
-      else showTask(id);
-      navigate({
-        search: (s) => ({ ...s, task: undefined, action: undefined }),
-        replace: true,
-      });
-      tasksQ.refetch();
-    })();
+    if (search.action) applyTaskAction(id, search.action);
+    else showTask(id);
+    navigate({
+      search: (s) => ({ ...s, task: undefined, action: undefined }),
+      replace: true,
+    });
   }, [search.task, search.action, tasksQ.isLoading]);
 
   if (tasksQ.isLoading) return <PageLoader />;

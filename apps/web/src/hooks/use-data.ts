@@ -1,157 +1,305 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { queryClient as qc } from "@/integrations/tanstack-query/root-provider";
+import { fetchers } from "@/lib/fetchers";
+import type { TaskPatch } from "@/lib/offline/outbox";
+import { baseOf, queue } from "@/lib/offline/sync";
+import { keys } from "@/lib/query-keys";
 import {
-  type CategoryInput,
-  type EventInput,
-  mockApi,
-  type PersonInput,
-  type TaskInput,
-} from "@/lib/mock-api";
-import type { Settings, TaskEvent, TaskStatus } from "@/lib/types";
+  type Category,
+  kindOf,
+  type NotificationLog,
+  newId,
+  type Person,
+  type Settings,
+  statusPatch,
+  type Task,
+  type TaskEvent,
+  type TaskStatus,
+} from "@/lib/types";
 
-/** Every key starts with "tu" so one invalidation refreshes everything. */
-export const keys = {
-  all: ["tu"] as const,
-  events: ["tu", "events"] as const,
-  categories: ["tu", "categories"] as const,
-  people: ["tu", "people"] as const,
-  tasks: ["tu", "tasks"] as const,
-  settings: ["tu", "settings"] as const,
-  log: ["tu", "log"] as const,
-};
+export { keys };
 
-const live = { staleTime: Number.POSITIVE_INFINITY };
+export type EventInput = Pick<
+  TaskEvent,
+  "name" | "description" | "color" | "icon" | "dueDate"
+>;
+export type CategoryInput = Pick<
+  Category,
+  "eventId" | "name" | "icon" | "color" | "memberIds"
+>;
+export type PersonInput = Pick<Person, "name" | "role" | "phone" | "note">;
+export type TaskInput = Pick<
+  Task,
+  | "eventId"
+  | "categoryId"
+  | "title"
+  | "notes"
+  | "priority"
+  | "dueDate"
+  | "dueTime"
+  | "assigneeId"
+  | "amount"
+  | "subtasks"
+  | "reminder"
+> & { status?: TaskStatus };
 
 export const useEvents = () =>
-  useQuery({ queryKey: keys.events, queryFn: mockApi.listEvents, ...live });
+  useQuery({ queryKey: keys.events, queryFn: fetchers.events });
 export const useCategories = () =>
-  useQuery({
-    queryKey: keys.categories,
-    queryFn: mockApi.listCategories,
-    ...live,
-  });
+  useQuery({ queryKey: keys.categories, queryFn: fetchers.categories });
 export const usePeople = () =>
-  useQuery({ queryKey: keys.people, queryFn: mockApi.listPeople, ...live });
+  useQuery({ queryKey: keys.people, queryFn: fetchers.people });
 export const useTasks = () =>
-  useQuery({ queryKey: keys.tasks, queryFn: mockApi.listTasks, ...live });
+  useQuery({ queryKey: keys.tasks, queryFn: fetchers.tasks });
 export const useSettings = () =>
-  useQuery({
-    queryKey: keys.settings,
-    queryFn: mockApi.getSettings,
-    ...live,
-  });
+  useQuery({ queryKey: keys.settings, queryFn: fetchers.settings });
 export const useLog = () =>
-  useQuery({ queryKey: keys.log, queryFn: mockApi.listLog, ...live });
+  useQuery({ queryKey: keys.log, queryFn: fetchers.log });
 
-/** Mutation that refreshes all data afterwards and toasts errors. */
-function useAct<V, R>(fn: (v: V) => Promise<R>, success?: string) {
-  const qc = useQueryClient();
+const now = () => new Date().toISOString();
+const cached = <T extends { id: string }>(
+  key: readonly unknown[],
+  id: string,
+) => qc.getQueryData<T[]>(key)?.find((r) => r.id === id);
+
+/** Writes are queued (lib/offline): they show at once and sync in the
+ * background, so the mutation resolves immediately, online or not. */
+function useAct<V, R>(fn: (v: V) => R, success?: string) {
   return useMutation({
-    mutationFn: fn,
+    mutationFn: async (v: V) => fn(v),
     onSuccess: () => {
       if (success) toast.success(success);
     },
     onError: (e) => toast.error((e as Error).message),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }
 
-// ---- events ----
-export const useCreateEvent = () =>
-  useAct((v: EventInput) => mockApi.createEvent(v), "Event created");
+/* ---- events ---- */
+
+export function createEvent(v: EventInput): TaskEvent {
+  const at = now();
+  const row: TaskEvent = {
+    ...v,
+    id: newId(),
+    status: "active",
+    archivedAt: null,
+    createdAt: at,
+    updatedAt: at,
+  };
+  queue({ kind: "event.create", row }, `Add event: ${row.name}`);
+  return row;
+}
+function updateEvent(
+  id: string,
+  patch: Partial<EventInput> & { status?: TaskEvent["status"] },
+  label = "Edit event",
+) {
+  const name = patch.name ?? cached<TaskEvent>(keys.events, id)?.name ?? "";
+  queue(
+    { kind: "event.update", id, patch, base: baseOf("events", id) },
+    `${label}: ${name}`,
+  );
+}
+
+export const useCreateEvent = () => useAct(createEvent, "Event created");
 export const useUpdateEvent = () =>
   useAct(
     ({ id, ...patch }: Partial<TaskEvent> & { id: string }) =>
-      mockApi.updateEvent(id, patch),
+      updateEvent(id, pickEvent(patch)),
     "Event saved",
   );
 export const useSetEventStatus = () =>
   useAct(({ id, status }: { id: string; status: TaskEvent["status"] }) =>
-    mockApi.setEventStatus(id, status),
+    updateEvent(
+      id,
+      { status },
+      status === "archived" ? "Archive event" : "Restore event",
+    ),
   );
 export const useDeleteEvent = () =>
-  useAct((id: string) => mockApi.deleteEvent(id), "Event deleted");
+  useAct((id: string) => {
+    const name = cached<TaskEvent>(keys.events, id)?.name ?? "";
+    queue({ kind: "event.delete", id }, `Delete event: ${name}`);
+  }, "Event deleted");
 
-// ---- categories ----
+function pickEvent(p: Partial<TaskEvent>) {
+  const { name, description, color, icon, dueDate, status } = p;
+  return Object.fromEntries(
+    Object.entries({ name, description, color, icon, dueDate, status }).filter(
+      ([, v]) => v !== undefined,
+    ),
+  ) as Partial<EventInput> & { status?: TaskEvent["status"] };
+}
+
+/* ---- categories ---- */
+
 export const useCreateCategory = () =>
-  useAct((v: CategoryInput) => mockApi.createCategory(v), "Category created");
+  useAct((v: CategoryInput) => {
+    const at = now();
+    const row: Category = {
+      ...v,
+      id: newId(),
+      kind: kindOf(v.memberIds),
+      createdAt: at,
+      updatedAt: at,
+    };
+    queue({ kind: "category.create", row }, `Add category: ${row.name}`);
+    return row;
+  }, "Category created");
 export const useUpdateCategory = () =>
-  useAct(
-    ({ id, ...patch }: Partial<CategoryInput> & { id: string }) =>
-      mockApi.updateCategory(id, patch),
-    "Category saved",
-  );
+  useAct(({ id, ...patch }: Partial<CategoryInput> & { id: string }) => {
+    const name =
+      patch.name ?? cached<Category>(keys.categories, id)?.name ?? "";
+    queue(
+      { kind: "category.update", id, patch, base: baseOf("categories", id) },
+      `Edit category: ${name}`,
+    );
+  }, "Category saved");
 export const useDeleteCategory = () =>
-  useAct((id: string) => mockApi.deleteCategory(id), "Category deleted");
+  useAct((id: string) => {
+    const name = cached<Category>(keys.categories, id)?.name ?? "";
+    queue({ kind: "category.delete", id }, `Delete category: ${name}`);
+  }, "Category deleted");
 
-// ---- people ----
+/* ---- people ---- */
+
 export const useCreatePerson = () =>
-  useAct((v: PersonInput) => mockApi.createPerson(v), "Person added");
+  useAct((v: PersonInput) => {
+    const at = now();
+    const row: Person = { ...v, id: newId(), createdAt: at, updatedAt: at };
+    queue({ kind: "person.create", row }, `Add person: ${row.name}`);
+    return row;
+  }, "Person added");
 export const useUpdatePerson = () =>
-  useAct(
-    ({ id, ...patch }: Partial<PersonInput> & { id: string }) =>
-      mockApi.updatePerson(id, patch),
-    "Saved",
-  );
+  useAct(({ id, ...patch }: Partial<PersonInput> & { id: string }) => {
+    const name = patch.name ?? cached<Person>(keys.people, id)?.name ?? "";
+    queue(
+      { kind: "person.update", id, patch, base: baseOf("people", id) },
+      `Edit person: ${name}`,
+    );
+  }, "Saved");
 export const useDeletePerson = () =>
-  useAct((id: string) => mockApi.deletePerson(id), "Person removed");
+  useAct((id: string) => {
+    const name = cached<Person>(keys.people, id)?.name ?? "";
+    queue({ kind: "person.delete", id }, `Remove person: ${name}`);
+  }, "Person removed");
 
-// ---- tasks ----
-export const useCreateTask = () =>
-  useAct((v: TaskInput) => mockApi.createTask(v), "Task added");
+/* ---- tasks ---- */
+
+export function createTask(v: TaskInput): Task {
+  const at = now();
+  const { status = "pending", ...rest } = v;
+  const row: Task = {
+    ...rest,
+    id: newId(),
+    status: "pending",
+    snoozedUntil: null,
+    lastRemindedAt: null,
+    createdAt: at,
+    updatedAt: at,
+    startedAt: null,
+    completedAt: null,
+  };
+  // The create carries the status; the queued row shows it like the API will.
+  const shown: Task = { ...row, ...statusPatch(row, status, at) };
+  queue({ kind: "task.create", row: shown }, `Add task: ${row.title}`);
+  return shown;
+}
+
+/** Any task change (status, snooze, fields) as one queued edit. */
+export function updateTask(id: string, patch: TaskPatch, label = "Edit task") {
+  const title = patch.title ?? cached<Task>(keys.tasks, id)?.title ?? "";
+  queue(
+    { kind: "task.update", id, patch, base: baseOf("tasks", id) },
+    `${label}: ${title}`,
+  );
+  return cached<Task>(keys.tasks, id);
+}
+
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  done: "Mark done",
+  in_progress: "Start",
+  pending: "Reopen",
+};
+
+export const setTaskStatus = (id: string, status: TaskStatus) =>
+  updateTask(id, { status }, STATUS_LABEL[status]);
+export const snoozeTask = (id: string, until: string | null) =>
+  updateTask(id, { snoozedUntil: until }, until ? "Snooze" : "Unsnooze");
+
+export const useCreateTask = () => useAct(createTask, "Task added");
 export const useUpdateTask = () =>
   useAct(
     ({ id, ...patch }: Partial<TaskInput> & { id: string }) =>
-      mockApi.updateTask(id, patch),
+      updateTask(id, patch),
     "Task saved",
   );
 export const useDeleteTask = () =>
-  useAct((id: string) => mockApi.deleteTask(id), "Task deleted");
+  useAct((id: string) => {
+    const title = cached<Task>(keys.tasks, id)?.title ?? "";
+    queue({ kind: "task.delete", id }, `Delete task: ${title}`);
+  }, "Task deleted");
 export const useToggleSubtask = () =>
-  useAct(({ taskId, subtaskId }: { taskId: string; subtaskId: string }) =>
-    mockApi.toggleSubtask(taskId, subtaskId),
-  );
+  useAct(({ taskId, subtaskId }: { taskId: string; subtaskId: string }) => {
+    const task = cached<Task>(keys.tasks, taskId);
+    if (!task) return;
+    // Sent as the whole list (not a toggle), so a replay can't flip it back.
+    const subtasks = task.subtasks.map((st) =>
+      st.id === subtaskId ? { ...st, doneAt: st.doneAt ? null : now() } : st,
+    );
+    updateTask(taskId, { subtasks }, "Checklist");
+  });
 export const useSnoozeTask = () =>
   useAct(({ id, until }: { id: string; until: string | null }) =>
-    mockApi.snoozeTask(id, until),
+    snoozeTask(id, until),
   );
 
 /** Status change with an Undo toast; marking done records the finish time. */
 export function useSetTaskStatus() {
-  const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       id,
       status,
     }: {
       id: string;
       status: TaskStatus;
       prev?: TaskStatus;
-    }) => mockApi.setTaskStatus(id, status),
+    }) => setTaskStatus(id, status),
     onSuccess: (task, { id, status, prev }) => {
       if (status === "done" && prev && prev !== "done") {
         toast.success("Marked as done", {
-          description: task.title,
-          action: {
-            label: "Undo",
-            onClick: () =>
-              mockApi
-                .setTaskStatus(id, prev)
-                .then(() => qc.invalidateQueries({ queryKey: keys.all })),
-          },
+          description: task?.title,
+          action: { label: "Undo", onClick: () => setTaskStatus(id, prev) },
         });
       }
     },
     onError: (e) => toast.error((e as Error).message),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }
 
-// ---- settings & log ----
-export const useUpdateSettings = () =>
-  useAct((patch: Partial<Settings>) => mockApi.updateSettings(patch));
-export const useMarkLogRead = () => useAct(() => mockApi.markLogRead());
-export const useClearLog = () => useAct(() => mockApi.clearLog(), "Cleared");
+/* ---- settings & log ---- */
+
+export const updateSettings = (patch: Partial<Settings>) =>
+  queue({ kind: "settings.update", patch }, "Reminder settings");
+export const addLog = (entries: Omit<NotificationLog, "id" | "readAt">[]) =>
+  queue(
+    {
+      kind: "log.add",
+      entries: entries.map((e) => ({ ...e, id: newId(), readAt: null })),
+    },
+    entries.length === 1 ? "Reminder sent" : `${entries.length} reminders sent`,
+  );
+export const markReminded = (ids: string[], at: string) =>
+  queue({ kind: "task.reminded", ids, at }, "Reminder times");
+
+export const useUpdateSettings = () => useAct(updateSettings);
+export const useMarkLogRead = () =>
+  useAct(() =>
+    queue({ kind: "log.read", at: now() }, "Mark notifications read"),
+  );
+export const useClearLog = () =>
+  useAct(() => queue({ kind: "log.clear" }, "Clear notifications"), "Cleared");
 
 /** id → row maps for showing names next to tasks. */
 export function useLookups() {

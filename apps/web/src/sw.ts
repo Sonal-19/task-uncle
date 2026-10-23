@@ -9,7 +9,12 @@ import { NavigationRoute, registerRoute } from "workbox-routing";
 
 declare let self: ServiceWorkerGlobalScope;
 
-self.skipWaiting();
+// A new version waits until the app says so ("Reload" in the update
+// toast, or by itself once the app is in the background and synced).
+self.addEventListener("message", (event) => {
+  if ((event.data as { type?: string } | null)?.type === "SKIP_WAITING")
+    void self.skipWaiting();
+});
 clientsClaim();
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);

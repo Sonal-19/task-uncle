@@ -1,0 +1,31 @@
+{
+  "name": "@task-uncle/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "NODE_ENV=production bun build --minify-whitespace --minify-syntax --target bun --outfile server.js ./src/index.ts",
+    "typecheck": "tsc --project ./tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push --force",
+    "db:seed": "bun src/db/seed/index.ts",
+    "db:studio": "drizzle-kit studio --port 5578"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "^1.4.2",
+    "date-fns": "^4.1.0",
+    "drizzle-orm": "catalog:",
+    "elysia": "catalog:",
+    "nodemailer": "^10.0.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@types/bun": "^1.4.1",
+    "@types/nodemailer": "^8.0.1",
+    "drizzle-kit": "catalog:",
+    "pg": "latest",
+    "typescript": "catalog:"
+  }
+}

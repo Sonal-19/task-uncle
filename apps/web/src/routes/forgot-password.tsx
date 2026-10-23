@@ -7,10 +7,10 @@ import { Field } from "@/components/common/field";
 import { Logo } from "@/components/common/logo";
 import { OtpInput } from "@/components/common/otp-input";
 import { PasswordInput } from "@/components/common/password-input";
-import { DemoHint } from "@/components/landing/auth-card";
+import { DEMO, DemoHint } from "@/components/landing/auth-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DEMO_OTP, mockApi } from "@/lib/mock-api";
+import { api, callMsg } from "@/lib/api";
 
 export const Route = createFileRoute("/forgot-password")({
   validateSearch: (s: Record<string, unknown>): { email?: string } => ({
@@ -41,7 +41,7 @@ function ForgotPassword() {
   const [cooldown, setCooldown] = useCountdown();
 
   const send = useMutation({
-    mutationFn: () => mockApi.sendResetCode(email),
+    mutationFn: () => callMsg(api.auth.password.forgot.post({ email })),
     onSuccess: ({ message }) => {
       toast.success(message);
       setStep("reset");
@@ -50,7 +50,8 @@ function ForgotPassword() {
     onError: (e) => toast.error(e.message),
   });
   const reset = useMutation({
-    mutationFn: () => mockApi.resetPassword(otp, password),
+    mutationFn: () =>
+      callMsg(api.auth.password.reset.post({ email, otp, password })),
     onSuccess: ({ message }) => {
       toast.success(message);
       navigate({ to: "/", hash: "login", replace: true });
@@ -119,11 +120,13 @@ function ForgotPassword() {
                 if (!mismatch) reset.mutate();
               }}
             >
-              <DemoHint
-                label="Demo code"
-                value={DEMO_OTP}
-                onFill={() => setOtp(DEMO_OTP)}
-              />
+              {DEMO.show && (
+                <DemoHint
+                  label="Demo code"
+                  value={DEMO.otp}
+                  onFill={() => setOtp(DEMO.otp)}
+                />
+              )}
               <OtpInput value={otp} onChange={setOtp} autoFocus />
               <Field label="New password" htmlFor="fp-pw">
                 <PasswordInput

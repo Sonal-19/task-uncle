@@ -9,7 +9,12 @@
     "lint": "biome lint .",
     "format": "biome format --write .",
     "check": "biome check .",
-    "icons": "bun scripts/icons.ts"
+    "icons": "bun scripts/icons.ts",
+    "db:push": "bun run --cwd apps/api db:push",
+    "db:seed": "bun run --cwd apps/api db:seed",
+    "deploy": "zsh scripts/deploy-all.sh",
+    "deploy:backend": "zsh scripts/deploy-backend.sh",
+    "deploy:frontend": "zsh scripts/deploy-frontend.sh"
   },
   "workspaces": {
     "catalog": {

@@ -4,8 +4,8 @@ import { ResponsiveSheet } from "@/components/common/responsive-sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import type { PersonInput } from "@/hooks/use-data";
 import { useCreatePerson, useUpdatePerson } from "@/hooks/use-data";
-import type { PersonInput } from "@/lib/mock-api";
 import { useSheets } from "@/stores/sheet-store";
 
 const blank: PersonInput = { name: "", role: "", phone: "", note: "" };

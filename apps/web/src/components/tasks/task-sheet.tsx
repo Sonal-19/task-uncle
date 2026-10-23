@@ -9,6 +9,7 @@ import { TimeInput } from "@/components/common/time-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import type { TaskInput } from "@/hooks/use-data";
 import {
   useCategories,
   useCreateTask,
@@ -17,7 +18,6 @@ import {
   useUpdateTask,
 } from "@/hooks/use-data";
 import { fromAmount, toAmount, todayStr, uid } from "@/lib/format";
-import type { TaskInput } from "@/lib/mock-api";
 import {
   INTERVALS,
   PRIORITIES,

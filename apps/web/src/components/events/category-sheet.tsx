@@ -6,13 +6,13 @@ import { ColorPicker, IconPicker } from "@/components/common/icon-color-picker";
 import { ResponsiveSheet } from "@/components/common/responsive-sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { CategoryInput } from "@/hooks/use-data";
 import {
   useCreateCategory,
   usePeople,
   useUpdateCategory,
 } from "@/hooks/use-data";
 import { COLORS } from "@/lib/icons";
-import type { CategoryInput } from "@/lib/mock-api";
 import { cn } from "@/lib/utils";
 import { useSheets } from "@/stores/sheet-store";
 

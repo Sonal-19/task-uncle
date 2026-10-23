@@ -1,16 +1,23 @@
-import { useMutation } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { ArrowRight, KeyRound, Loader2, LogIn, Mail } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { Field } from "@/components/common/field";
 import { PasswordInput } from "@/components/common/password-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DEMO_PASSWORD, DEMO_USER, mockApi } from "@/lib/mock-api";
+import { useLogin } from "@/hooks/use-auth";
 import { useAuthStore } from "@/stores/auth-store";
 
-/** Shown while the API is dummy: the demo credentials, one tap to fill. */
+/** The login `bun run --cwd apps/api db:seed` creates, and the reset code
+ * the API accepts outside production. Shown in dev builds only. */
+export const DEMO = {
+  email: "admin@taskuncle.app",
+  password: "uncle@123",
+  otp: "123456",
+  show: import.meta.env.DEV,
+};
+
+/** Dev only: the demo credentials, one tap to fill. */
 export function DemoHint({
   label,
   value,
@@ -42,21 +49,10 @@ export function DemoHint({
 }
 
 export function AuthCard() {
-  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const setUser = useAuthStore((s) => s.setUser);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  const login = useMutation({
-    mutationFn: () => mockApi.login(email, password),
-    onSuccess: (u) => {
-      setUser(u);
-      toast.success(`Welcome back, ${u.name}!`);
-      navigate({ to: "/dashboard" });
-    },
-    onError: (e) => toast.error(e.message),
-  });
+  const login = useLogin();
 
   if (user) {
     return (
@@ -88,17 +84,19 @@ export function AuthCard() {
         className="mt-6 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          login.mutate();
+          login.mutate({ email, password });
         }}
       >
-        <DemoHint
-          label="Demo"
-          value={`${DEMO_USER.email} / ${DEMO_PASSWORD}`}
-          onFill={() => {
-            setEmail(DEMO_USER.email);
-            setPassword(DEMO_PASSWORD);
-          }}
-        />
+        {DEMO.show && (
+          <DemoHint
+            label="Demo"
+            value={`${DEMO.email} / ${DEMO.password}`}
+            onFill={() => {
+              setEmail(DEMO.email);
+              setPassword(DEMO.password);
+            }}
+          />
+        )}
         <Field label="Email" htmlFor="login-email">
           <div className="relative">
             <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />

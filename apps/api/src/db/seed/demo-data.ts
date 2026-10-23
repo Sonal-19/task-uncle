@@ -1,32 +1,17 @@
 import { addDays, format, subDays, subHours } from "date-fns";
-import type {
-  Category,
-  NotificationLog,
-  Person,
-  Settings,
-  Task,
-  TaskEvent,
-} from "@/lib/types";
-
-export type DataState = {
-  events: TaskEvent[];
-  categories: Category[];
-  people: Person[];
-  tasks: Task[];
-  settings: Settings;
-  log: NotificationLog[];
-};
-
-export const DEFAULT_SETTINGS: Settings = {
-  notifications: "on",
-  interval: "1h",
-  quietHours: { from: "22:00", to: "07:00" },
-  overdueBoost: "on",
-  permissionPromptDismissedAt: null,
-};
+import {
+  type Category,
+  type DataState,
+  DEFAULT_SETTINGS,
+  type NotificationLog,
+  type Person,
+  type Task,
+  type TaskEvent,
+} from "$/lib/shared/types";
 
 /** Demo data, dated relative to `now` so there is always something overdue,
- * due today and upcoming. */
+ * due today and upcoming. Ids are readable placeholders: `replaceAll`
+ * swaps every one for a fresh UUID when it is saved. */
 export function buildSeed(now = new Date()): DataState {
   const day = (offset: number) =>
     format(
@@ -47,6 +32,7 @@ export function buildSeed(now = new Date()): DataState {
       status: "active",
       archivedAt: null,
       createdAt: created,
+      updatedAt: created,
     },
     {
       id: "ev-khalsa",
@@ -58,6 +44,7 @@ export function buildSeed(now = new Date()): DataState {
       status: "active",
       archivedAt: null,
       createdAt: created,
+      updatedAt: created,
     },
     {
       id: "ev-personal",
@@ -69,6 +56,7 @@ export function buildSeed(now = new Date()): DataState {
       status: "active",
       archivedAt: null,
       createdAt: created,
+      updatedAt: created,
     },
   ];
 
@@ -84,6 +72,7 @@ export function buildSeed(now = new Date()): DataState {
     phone,
     note: "",
     createdAt: created,
+    updatedAt: created,
   });
   const people: Person[] = [
     person("p-aman", "Aman Verma", "Frontend developer", "+91 98765 43210"),
@@ -115,6 +104,7 @@ export function buildSeed(now = new Date()): DataState {
     kind: memberIds.length ? "team" : "general",
     memberIds,
     createdAt: created,
+    updatedAt: created,
   });
   const categories: Category[] = [
     cat("c-meet", "ev-shimla", "Meetings", "calendar", "#0284c7"),

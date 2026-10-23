@@ -2,10 +2,10 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export type AppUser = {
-  id: string;
+  id: number;
   name: string;
   email: string;
-  role: "admin";
+  createdAt: string;
 };
 
 interface AuthState {
@@ -14,8 +14,8 @@ interface AuthState {
   clearUser: () => void;
 }
 
-/** Logged-in admin. With the dummy API this is the session itself; once
- * `apps/api` exists it becomes the cached copy of `/auth/me`. */
+/** Cached copy of `/auth/me`, so the app opens (offline too) without
+ * waiting for the server. The session itself is the httpOnly cookie. */
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({

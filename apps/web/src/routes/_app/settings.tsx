@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   BellRing,
@@ -11,7 +10,9 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 import { toast } from "sonner";
+import { InstallButton } from "@/components/app/install-app";
 import { SectionCard } from "@/components/app/section-card";
+import { ShortcutKeys } from "@/components/app/shortcuts";
 import { THEMES } from "@/components/app/user-menu";
 import { confirm } from "@/components/common/confirm-dialog";
 import { Field } from "@/components/common/field";
@@ -20,16 +21,23 @@ import { PageLoader } from "@/components/common/states";
 import { TimeInput } from "@/components/common/time-input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { keys, useSettings, useUpdateSettings } from "@/hooks/use-data";
+import { useSettings, useUpdateSettings } from "@/hooks/use-data";
 import { usePermission } from "@/hooks/use-permission";
 import { runReminderCheck } from "@/hooks/use-reminders";
-import { mockApi } from "@/lib/mock-api";
+import { api, callMsg } from "@/lib/api";
+import {
+  discardAll,
+  localSnapshot,
+  pendingCount,
+  refresh,
+} from "@/lib/offline/sync";
 import { showNotification } from "@/lib/reminders/notify";
 import { inQuietHours } from "@/lib/reminders/reminder-engine";
 import { INTERVALS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useThemeStore } from "@/stores/theme-store";
+import { useUiStore } from "@/stores/ui-store";
 
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
@@ -51,13 +59,12 @@ function SettingsPage() {
   const [perm, request] = usePermission();
   const { theme, setTheme } = useThemeStore();
   const user = useAuthStore((s) => s.user);
-  const qc = useQueryClient();
+  const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
   const fileRef = useRef<HTMLInputElement>(null);
 
   if (settingsQ.isLoading || !settingsQ.data) return <PageLoader />;
   const s = settingsQ.data;
   const on = s.notifications === "on";
-  const refresh = () => qc.invalidateQueries({ queryKey: keys.all });
 
   async function testNotification() {
     let p = perm;
@@ -80,13 +87,7 @@ function SettingsPage() {
 
   async function remindNow() {
     // Treat every pending task as due, then run the engine once.
-    const { tasks } = mockApi.exportData();
-    mockApi.markReminded(
-      tasks.filter((t) => t.status !== "done").map((t) => t.id),
-      new Date(0).toISOString(),
-    );
-    const n = await runReminderCheck();
-    refresh();
+    const n = await runReminderCheck(new Date(), true);
     toast.info(
       n
         ? `Sent reminders for ${n} pending tasks`
@@ -94,8 +95,14 @@ function SettingsPage() {
     );
   }
 
-  function exportBackup() {
-    const blob = new Blob([JSON.stringify(mockApi.exportData(), null, 2)], {
+  async function exportBackup() {
+    // What this device shows, unsynced changes included (works offline).
+    const data = await localSnapshot().catch(() => null);
+    if (!data) {
+      toast.error("Connect once so there is data to export.");
+      return;
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
     });
     const a = document.createElement("a");
@@ -105,14 +112,47 @@ function SettingsPage() {
     URL.revokeObjectURL(a.href);
   }
 
-  async function importBackup(file: File) {
+  /** Replaces everything on the server; changes still waiting to sync
+   * would land on top of the restored data, so they are dropped. */
+  async function replaceAll(
+    title: string,
+    run: () => Promise<{ message: string }>,
+  ) {
+    const n = pendingCount();
+    if (
+      !(await confirm({
+        title,
+        description: `All your events, tasks and people are replaced.${
+          n
+            ? ` ${n} unsynced change${n > 1 ? "s" : ""} on this device will be dropped.`
+            : ""
+        }`,
+        confirmText: "Replace",
+        destructive: true,
+      }))
+    )
+      return;
     try {
-      await mockApi.importData(JSON.parse(await file.text()));
-      refresh();
-      toast.success("Backup restored");
+      const { message } = await run();
+      discardAll();
+      await refresh();
+      toast.success(message);
     } catch (e) {
       toast.error((e as Error).message || "Could not read that file");
     }
+  }
+
+  async function importBackup(file: File) {
+    let data: unknown;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      toast.error("That file is not a Task Uncle backup");
+      return;
+    }
+    await replaceAll("Restore this backup?", () =>
+      callMsg(api.backup.post(data)),
+    );
   }
 
   return (
@@ -316,9 +356,25 @@ function SettingsPage() {
             <dd className="font-medium">{user?.email}</dd>
           </div>
         </dl>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Demo account — profile editing arrives with the real backend.
-        </p>
+      </SectionCard>
+
+      <SectionCard title="App">
+        <div className="space-y-5">
+          <Row
+            title="Keyboard shortcuts"
+            text="Press ? anywhere to see them all."
+          >
+            <Button variant="outline" onClick={() => setShortcutsOpen(true)}>
+              <ShortcutKeys binding="?" /> Show
+            </Button>
+          </Row>
+          <Row
+            title="Install Task Uncle"
+            text="Opens like an app, works offline and syncs when you're back online."
+          >
+            <InstallButton className="w-auto" fallback="Installed" />
+          </Row>
+        </div>
       </SectionCard>
 
       <SectionCard title="Data">
@@ -343,21 +399,11 @@ function SettingsPage() {
           <Button
             variant="ghost"
             className="text-destructive hover:text-destructive"
-            onClick={async () => {
-              if (
-                await confirm({
-                  title: "Reset to demo data?",
-                  description:
-                    "All your events, tasks and people are replaced.",
-                  confirmText: "Reset",
-                  destructive: true,
-                })
-              ) {
-                await mockApi.resetDemo();
-                refresh();
-                toast.success("Demo data restored");
-              }
-            }}
+            onClick={() =>
+              replaceAll("Reset to demo data?", () =>
+                callMsg(api.backup["reset-demo"].post()),
+              )
+            }
           >
             <RotateCcw /> Reset demo data
           </Button>

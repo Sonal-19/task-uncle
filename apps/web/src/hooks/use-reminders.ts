@@ -1,31 +1,65 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { addHours } from "date-fns";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { keys } from "@/hooks/use-data";
+import {
+  addLog,
+  markReminded,
+  setTaskStatus,
+  snoozeTask,
+} from "@/hooks/use-data";
+import { queryClient as qc } from "@/integrations/tanstack-query/root-provider";
+import { fetchers } from "@/lib/fetchers";
 import { isOverdue } from "@/lib/format";
-import { mockApi } from "@/lib/mock-api";
+import { keys } from "@/lib/query-keys";
 import { permission, showNotification } from "@/lib/reminders/notify";
 import { dueReminders } from "@/lib/reminders/reminder-engine";
 import { PRIORITY_RANK } from "@/lib/task-utils";
-import type { Task } from "@/lib/types";
-import { useDataStore } from "@/stores/data-store";
+import type { Category, Task, TaskEvent } from "@/lib/types";
 
 const CHECK_EVERY = 60_000;
 /** Individual notifications per check; the rest go into one summary. */
 const MAX_SINGLE = 3;
 
 function label(t: Task) {
-  const { events, categories } = useDataStore.getState();
-  const ev = events.find((e) => e.id === t.eventId)?.name;
-  const cat = categories.find((c) => c.id === t.categoryId)?.name;
+  const ev = qc
+    .getQueryData<TaskEvent[]>(keys.events)
+    ?.find((e) => e.id === t.eventId)?.name;
+  const cat = qc
+    .getQueryData<Category[]>(keys.categories)
+    ?.find((c) => c.id === t.categoryId)?.name;
   return [ev, cat].filter(Boolean).join(" · ");
 }
 
-/** One pass of the engine: notify, then stamp `lastRemindedAt`. */
-export async function runReminderCheck(now = new Date()) {
-  const { tasks, settings } = useDataStore.getState();
+/** The data the engine reads: cached (works offline), fetched if missing. */
+async function load() {
+  const [tasks, settings] = await Promise.all([
+    qc.ensureQueryData({ queryKey: keys.tasks, queryFn: fetchers.tasks }),
+    qc.ensureQueryData({ queryKey: keys.settings, queryFn: fetchers.settings }),
+  ]);
+  // Only for the notification text.
+  await Promise.all([
+    qc.ensureQueryData({ queryKey: keys.events, queryFn: fetchers.events }),
+    qc.ensureQueryData({
+      queryKey: keys.categories,
+      queryFn: fetchers.categories,
+    }),
+  ]).catch(() => {});
+  return { tasks, settings };
+}
+
+/** One pass of the engine: stamp `lastRemindedAt`, then notify. `force`
+ * treats every pending task as due (Settings → Remind me now). */
+export async function runReminderCheck(now = new Date(), force = false) {
+  const data = await load().catch(() => null);
+  if (!data) return 0;
+  const { settings } = data;
+  const tasks = force
+    ? data.tasks.map((t) => ({
+        ...t,
+        lastRemindedAt: new Date(0).toISOString(),
+      }))
+    : data.tasks;
   const due = dueReminders(tasks, settings, now).sort(
     (a, b) =>
       Number(isOverdue(b, now)) - Number(isOverdue(a, now)) ||
@@ -34,8 +68,7 @@ export async function runReminderCheck(now = new Date()) {
   if (!due.length) return 0;
 
   const at = now.toISOString();
-  // Stamp first so a second tab running the same check skips these.
-  mockApi.markReminded(
+  markReminded(
     due.map((t) => t.id),
     at,
   );
@@ -60,7 +93,7 @@ export async function runReminderCheck(now = new Date()) {
       sentAt: at,
     });
   }
-  mockApi.addLog(entries);
+  addLog(entries);
 
   if (permission() === "granted") {
     for (const e of entries)
@@ -80,60 +113,67 @@ export async function runReminderCheck(now = new Date()) {
   return due.length;
 }
 
-/** Mounted once in the app shell: runs the engine, keeps tabs in sync and
+/** Mounted once in the app shell: runs the engine (in one tab only) and
  * applies Mark done / Snooze taps coming from the service worker. */
 export function useReminders() {
-  const qc = useQueryClient();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const refresh = () => qc.invalidateQueries({ queryKey: keys.all });
-    const tick = () =>
-      runReminderCheck().then((n) => {
-        if (n) refresh();
-      });
-
-    const first = setTimeout(tick, 4000);
-    const timer = setInterval(tick, CHECK_EVERY);
+    let first: ReturnType<typeof setTimeout> | undefined;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const tick = () => void runReminderCheck();
     const onVisible = () => document.visibilityState === "visible" && tick();
-    document.addEventListener("visibilitychange", onVisible);
-
-    // Another tab changed the data → reload it here.
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== "tu-data") return;
-      useDataStore.persist.rehydrate();
-      refresh();
+    const run = () => {
+      first = setTimeout(tick, 4000);
+      timer = setInterval(tick, CHECK_EVERY);
+      document.addEventListener("visibilitychange", onVisible);
     };
-    window.addEventListener("storage", onStorage);
 
-    const onMessage = async (e: MessageEvent) => {
+    // Several tabs open: only the one holding the lock reminds, so nothing
+    // is notified or logged twice. When it closes, the next tab takes over.
+    const stop = new AbortController();
+    let release: (() => void) | undefined;
+    if (navigator.locks)
+      navigator.locks
+        .request("tu-reminders", { signal: stop.signal }, () => {
+          run();
+          return new Promise<void>((r) => {
+            release = r;
+          });
+        })
+        .catch(() => {});
+    else run();
+
+    const onMessage = (e: MessageEvent) => {
       const msg = e.data as { type?: string; taskId?: string; action?: string };
       if (msg?.type !== "task-action" || !msg.taskId) return;
-      await applyTaskAction(msg.taskId, msg.action);
-      refresh();
+      applyTaskAction(msg.taskId, msg.action);
       if (!msg.action) navigate({ to: "/tasks", search: { task: msg.taskId } });
     };
     navigator.serviceWorker?.addEventListener("message", onMessage);
 
     return () => {
+      stop.abort();
+      release?.();
       clearTimeout(first);
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("storage", onStorage);
       navigator.serviceWorker?.removeEventListener("message", onMessage);
     };
-  }, [qc, navigate]);
+  }, [navigate]);
 }
 
 /** "done" / "snooze" from a notification button. */
-export async function applyTaskAction(taskId: string, action?: string) {
-  const task = useDataStore.getState().tasks.find((t) => t.id === taskId);
+export function applyTaskAction(taskId: string, action?: string) {
+  const task = qc
+    .getQueryData<Task[]>(keys.tasks)
+    ?.find((t) => t.id === taskId);
   if (!task) return;
   if (action === "done") {
-    await mockApi.setTaskStatus(taskId, "done");
+    setTaskStatus(taskId, "done");
     toast.success("Marked as done", { description: task.title });
   } else if (action === "snooze") {
-    await mockApi.snoozeTask(taskId, addHours(new Date(), 1).toISOString());
+    snoozeTask(taskId, addHours(new Date(), 1).toISOString());
     toast.info("Snoozed for 1 hour", { description: task.title });
   }
 }

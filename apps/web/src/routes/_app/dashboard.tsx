@@ -9,6 +9,7 @@ import {
   Plus,
   Sparkles,
 } from "lucide-react";
+import { InstallCard } from "@/components/app/install-app";
 import { PermissionBanner } from "@/components/app/permission-banner";
 import { StatCard } from "@/components/app/stat-card";
 import { EmptyState, PageLoader } from "@/components/common/states";
@@ -44,6 +45,7 @@ function Dashboard() {
 
   return (
     <div className="space-y-5">
+      <InstallCard />
       <PermissionBanner />
 
       {/* Hero summary */}

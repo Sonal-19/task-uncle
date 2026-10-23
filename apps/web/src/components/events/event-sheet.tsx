@@ -6,9 +6,9 @@ import { ResponsiveSheet } from "@/components/common/responsive-sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import type { EventInput } from "@/hooks/use-data";
 import { useCreateEvent, useUpdateEvent } from "@/hooks/use-data";
 import { COLORS } from "@/lib/icons";
-import type { EventInput } from "@/lib/mock-api";
 import { useSheets } from "@/stores/sheet-store";
 
 const blank = (): EventInput => ({
