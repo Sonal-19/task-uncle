@@ -21,7 +21,7 @@ import { Logo } from "@/components/common/logo";
 import { AuthCard } from "@/components/landing/auth-card";
 import { NotificationStack } from "@/components/landing/notification-stack";
 import { Button } from "@/components/ui/button";
-import { useAuthStore } from "@/stores/auth-store";
+import { homeFor, useAuthStore } from "@/stores/auth-store";
 import { useThemeStore } from "@/stores/theme-store";
 
 export const Route = createFileRoute("/")({
@@ -153,7 +153,7 @@ function Landing() {
             </Button>
             {user ? (
               <Button asChild size="sm">
-                <Link to="/dashboard">Dashboard</Link>
+                <Link to={homeFor(user)}>Dashboard</Link>
               </Button>
             ) : (
               <Button asChild size="sm">
@@ -194,7 +194,7 @@ function Landing() {
             <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Button asChild size="lg">
                 {user ? (
-                  <Link to="/dashboard">
+                  <Link to={homeFor(user)}>
                     Open dashboard <ArrowRight />
                   </Link>
                 ) : (
@@ -326,7 +326,7 @@ function Landing() {
             className="relative mt-6 bg-white text-indigo-700 hover:bg-indigo-50"
           >
             {user ? (
-              <Link to="/dashboard">
+              <Link to={homeFor(user)}>
                 Open dashboard <ArrowRight />
               </Link>
             ) : (

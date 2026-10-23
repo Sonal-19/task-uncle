@@ -19,7 +19,14 @@ export const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: "system", label: "System", icon: Monitor },
 ];
 
-export function UserMenu({ user }: { user: AppUser }) {
+export function UserMenu({
+  user,
+  settings = true,
+}: {
+  user: AppUser;
+  /** The Settings link (task-app settings; hidden for admins). */
+  settings?: boolean;
+}) {
   const logout = useLogout();
   const { theme, setTheme } = useThemeStore();
   return (
@@ -52,11 +59,13 @@ export function UserMenu({ user }: { user: AppUser }) {
           ))}
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link to="/settings">
-            <Settings /> Settings
-          </Link>
-        </DropdownMenuItem>
+        {settings && (
+          <DropdownMenuItem asChild>
+            <Link to="/settings">
+              <Settings /> Settings
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem variant="destructive" onClick={logout}>
           <LogOut /> Log out
         </DropdownMenuItem>

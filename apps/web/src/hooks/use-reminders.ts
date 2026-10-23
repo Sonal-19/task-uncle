@@ -19,6 +19,7 @@ import { keys } from "@/lib/query-keys";
 import { permission, showNotification } from "@/lib/reminders/notify";
 import { planReminders } from "@/lib/reminders/reminder-engine";
 import type { Category, Task, TaskEvent } from "@/lib/types";
+import { useAuthStore } from "@/stores/auth-store";
 
 const CHECK_EVERY = 60_000;
 
@@ -69,6 +70,8 @@ export async function runReminderCheck(now = new Date(), force = false) {
         lastRemindedAt: new Date(0).toISOString(),
       }))
     : data.tasks;
+  // The admin turned reminders off for this account.
+  if (useAuthStore.getState().user?.notifyPermission === "off") return 0;
   if (!force && serverReminds()) return 0;
   const { due, entries } = planReminders(tasks, settings, label, now);
   if (!due.length) return 0;

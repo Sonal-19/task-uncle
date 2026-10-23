@@ -49,9 +49,7 @@ function MorePage() {
         </span>
         Log out
       </button>
-      <p className="text-center text-xs text-muted-foreground">
-        Task Uncle · v0.1 (demo data)
-      </p>
+      <p className="text-center text-xs text-muted-foreground">Task Uncle</p>
     </div>
   );
 }

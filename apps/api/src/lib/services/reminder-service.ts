@@ -7,6 +7,7 @@ import {
   pushSubscriptionsTable,
   tasksTable,
   userSettingsTable,
+  usersTable,
 } from "$/db/schema";
 import { DEFAULT_TIMEZONE } from "$/env";
 import { planReminders, toPushPayload } from "$/lib/shared/reminder-engine";
@@ -38,9 +39,17 @@ class ReminderService {
     if (this.#running) return;
     this.#running = true;
     try {
+      // Only accounts that are active and allowed reminders by the admin.
       const users = await db
         .selectDistinct({ userId: pushSubscriptionsTable.userId })
-        .from(pushSubscriptionsTable);
+        .from(pushSubscriptionsTable)
+        .innerJoin(usersTable, eq(usersTable.id, pushSubscriptionsTable.userId))
+        .where(
+          and(
+            eq(usersTable.status, "active"),
+            eq(usersTable.notifyPermission, "on"),
+          ),
+        );
       for (const { userId } of users)
         await this.remindUser(userId, now).catch((err) =>
           console.error(`[Reminders] user ${userId} failed:`, err),

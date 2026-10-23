@@ -45,6 +45,19 @@ class UserCacheService {
   invalidate(id: number) {
     this.#cache.delete(id);
   }
+
+  /** Records activity: `lastSeenAt`, written at most every 5 minutes per
+   * user and never awaited by the request. */
+  touch(user: SelectUser) {
+    const now = Date.now();
+    if (user.lastSeenAt && now - user.lastSeenAt.getTime() < 5 * 60_000) return;
+    user.lastSeenAt = new Date(now);
+    db.update(usersTable)
+      .set({ lastSeenAt: user.lastSeenAt, updatedAt: usersTable.updatedAt })
+      .where(eq(usersTable.id, user.id))
+      .execute()
+      .catch(console.error);
+  }
 }
 
 export const userCacheService = new UserCacheService();

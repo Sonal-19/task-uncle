@@ -6,7 +6,7 @@ import { PasswordInput } from "@/components/common/password-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLogin } from "@/hooks/use-auth";
-import { useAuthStore } from "@/stores/auth-store";
+import { homeFor, useAuthStore } from "@/stores/auth-store";
 
 /** The login `bun run --cwd apps/api db:seed` creates, and the reset code
  * the API accepts outside production. Shown in dev builds only. */
@@ -60,7 +60,7 @@ export function AuthCard() {
         <p className="text-sm text-muted-foreground">Logged in as</p>
         <p className="text-lg font-semibold">{user.email}</p>
         <Button asChild size="lg" className="mt-5 w-full">
-          <Link to="/dashboard">
+          <Link to={homeFor(user)}>
             Open dashboard <ArrowRight />
           </Link>
         </Button>
@@ -73,10 +73,7 @@ export function AuthCard() {
       id="login"
       className="scroll-mt-24 rounded-3xl border bg-card p-5 shadow-2xl shadow-primary/10 sm:p-8"
     >
-      <span className="grid size-12 place-items-center rounded-2xl bg-accent text-accent-foreground">
-        <LogIn className="size-6" />
-      </span>
-      <h2 className="mt-4 text-2xl font-bold tracking-tight">Admin login</h2>
+      <h2 className="mt-4 text-2xl font-bold tracking-tight">Log in</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         Log in to see your pending work.
       </p>
@@ -146,6 +143,15 @@ export function AuthCard() {
           )}
         </Button>
       </form>
+      <p className="mt-5 text-center text-sm text-muted-foreground">
+        New to Task Uncle?{" "}
+        <Link
+          to="/register"
+          className="font-medium text-primary hover:underline"
+        >
+          Create an account
+        </Link>
+      </p>
     </div>
   );
 }

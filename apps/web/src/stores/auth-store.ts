@@ -1,12 +1,14 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-export type AppUser = {
-  id: number;
-  name: string;
-  email: string;
-  createdAt: string;
-};
+import type { PublicUser } from "@/lib/types";
+
+/** `role` decides where login lands (admin → /admin) and whether the admin
+ * pages show; `notifyPermission` "off" = the admin turned reminders off. */
+export type AppUser = PublicUser;
+
+export const homeFor = (u: Pick<AppUser, "role"> | null | undefined) =>
+  u?.role === "admin" ? "/admin" : "/dashboard";
 
 interface AuthState {
   user: AppUser | null;

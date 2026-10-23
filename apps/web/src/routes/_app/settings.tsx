@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  BellOff,
   BellRing,
   Download,
   Moon,
@@ -65,6 +66,7 @@ function SettingsPage() {
   const push = usePush();
   const { theme, setTheme } = useThemeStore();
   const user = useAuthStore((s) => s.user);
+  const blocked = user?.notifyPermission === "off";
   const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -202,12 +204,27 @@ function SettingsPage() {
         }
       >
         <div className="space-y-5">
+          {blocked && (
+            <div className="flex items-start gap-3 rounded-xl border border-overdue/30 bg-overdue/8 p-3 text-sm">
+              <BellOff className="mt-0.5 size-4 shrink-0 text-overdue" />
+              <p>
+                <span className="font-medium">
+                  Notifications are turned off for your account by the admin.
+                </span>{" "}
+                <span className="text-muted-foreground">
+                  You won't get reminders on any device until they turn them
+                  back on.
+                </span>
+              </p>
+            </div>
+          )}
           <Row
             title="Notifications"
             text="Remind me about pending tasks until they are marked done."
           >
             <Switch
-              checked={on}
+              disabled={blocked}
+              checked={on && !blocked}
               onCheckedChange={async (v) => {
                 update.mutate({ notifications: v ? "on" : "off" });
                 if (v && perm === "default") await request();
@@ -264,6 +281,7 @@ function SettingsPage() {
               checked={push.state === "on"}
               disabled={
                 !on ||
+                blocked ||
                 push.state === null ||
                 push.state === "unsupported" ||
                 push.state === "blocked"

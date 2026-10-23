@@ -18,6 +18,24 @@ export const taskReminders = [
 ] as const;
 export const onOff = ["on", "off"] as const;
 
+/** `admin` opens the admin panel (set with `db:make-admin` or by another admin). */
+export const userRoles = ["user", "admin"] as const;
+/** `disabled` can't log in; their sessions stop working. */
+export const userStatuses = ["active", "disabled"] as const;
+export type UserRole = (typeof userRoles)[number];
+export type UserStatus = (typeof userStatuses)[number];
+
+/** The logged-in user as the API sends it. `notifyPermission` = whether the
+ * admin lets this account get reminders at all. */
+export type PublicUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  notifyPermission: OnOff;
+  createdAt: string;
+};
+
 export type EventStatus = (typeof eventStatuses)[number];
 export type TaskStatus = (typeof taskStatuses)[number];
 export type Priority = (typeof priorities)[number];

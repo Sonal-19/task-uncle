@@ -5,7 +5,11 @@ import { pushSubscriptionsTable, usersTable } from "$/db/schema";
 import { coreAuthService } from "$/lib/services/core-auth-service";
 import { otpService } from "$/lib/services/otp-service";
 import { clientIp, rateLimitService } from "$/lib/services/rate-limit-service";
-import { publicUser, startSession } from "$/lib/services/session-service";
+import {
+  createUser,
+  publicUser,
+  startSession,
+} from "$/lib/services/session-service";
 import { userCacheService } from "$/lib/services/user-cache-service";
 import { fail, normalizeEmail, ok } from "$/lib/utils";
 import { authProcessor } from "$/pre-processor";
@@ -26,10 +30,52 @@ async function findUserByEmail(email: string) {
   return user;
 }
 
+/** A unique-index violation (another request took the email first). */
+export const isUniqueViolation = (e: unknown) =>
+  (e as { errno?: string })?.errno === "23505" ||
+  (e as { code?: string })?.code === "23505" ||
+  /duplicate key|unique/i.test((e as Error)?.message ?? "");
+
 export const authController = new Elysia({
   name: "auth_controller",
   prefix: "/auth",
 })
+  /** Sign-up: a normal user, logged straight in. Emails are unique. */
+  .post(
+    "/register",
+    async ({ body, status, cookie, headers, request, server }) => {
+      const ip = clientIp(request, server);
+      if (!rateLimitService.hit(`register:${ip}`, 10, 3_600_000))
+        return status(429, fail("Too many sign-ups. Try again later."));
+      const email = normalizeEmail(body.email);
+      if (await findUserByEmail(email))
+        return status(409, fail("An account with this email already exists"));
+      let user: Awaited<ReturnType<typeof createUser>>;
+      try {
+        user = await createUser({
+          name: body.name.trim(),
+          email,
+          password: body.password,
+        });
+      } catch (e) {
+        if (isUniqueViolation(e))
+          return status(409, fail("An account with this email already exists"));
+        throw e;
+      }
+      await startSession(cookie, user.id, {
+        ip,
+        userAgent: headers["user-agent"],
+      });
+      return ok(publicUser(user), "Welcome! Your account is ready");
+    },
+    {
+      body: t.Object({
+        name: t.String({ minLength: 2, maxLength: 80 }),
+        email: tEmail,
+        password: tPassword,
+      }),
+    },
+  )
   .post(
     "/login",
     async ({ body, status, cookie, headers, request, server }) => {
@@ -44,6 +90,11 @@ export const authController = new Elysia({
       const valid =
         user && (await Bun.password.verify(body.password, user.passwordHash));
       if (!user || !valid) return status(403, fail("Wrong email or password"));
+      if (user.status !== "active")
+        return status(
+          403,
+          fail("This account is disabled. Contact the admin."),
+        );
       rateLimitService.reset(key);
       await startSession(cookie, user.id, {
         ip,

@@ -8,7 +8,7 @@ import { claimDevice, forgetDevice, pendingCount } from "@/lib/offline/sync";
 import { resetPush, syncPush } from "@/lib/push";
 import { offerInstallAgain } from "@/lib/pwa";
 import { keys } from "@/lib/query-keys";
-import { useAuthStore } from "@/stores/auth-store";
+import { type AppUser, homeFor, useAuthStore } from "@/stores/auth-store";
 
 export function useAuth() {
   const user = useAuthStore((s) => s.user);
@@ -33,22 +33,41 @@ export function useSession() {
     if (!user) return;
     void claimDevice(user.id);
     // A browser that already allows notifications gets server reminders.
-    void syncPush(user.id);
-  }, [user?.id]);
+    if (user.role !== "admin")
+      void syncPush(user.id, user.notifyPermission !== "off");
+  }, [user?.id, user?.notifyPermission]);
+}
+
+/** After login or sign-up: claim this device for them, then go to their
+ * home (admins → the admin panel, everyone else → the dashboard). */
+function useSignedIn() {
+  const navigate = useNavigate();
+  return async (u: AppUser, message: string) => {
+    await claimDevice(u.id);
+    offerInstallAgain();
+    useAuthStore.getState().setUser(u);
+    toast.success(message);
+    navigate({ to: homeFor(u) });
+  };
 }
 
 export function useLogin() {
-  const navigate = useNavigate();
+  const signedIn = useSignedIn();
   return useMutation({
     mutationFn: (v: { email: string; password: string }) =>
       call(api.auth.login.post(v)),
-    onSuccess: async (u) => {
-      await claimDevice(u.id);
-      offerInstallAgain();
-      useAuthStore.getState().setUser(u);
-      toast.success(`Welcome back, ${u.name}!`);
-      navigate({ to: "/dashboard" });
-    },
+    onSuccess: (u) => signedIn(u, `Welcome back, ${u.name}!`),
+    onError: (e) => toast.error(e.message),
+  });
+}
+
+export function useRegister() {
+  const signedIn = useSignedIn();
+  return useMutation({
+    mutationFn: (v: { name: string; email: string; password: string }) =>
+      call(api.auth.register.post(v)),
+    onSuccess: (u) =>
+      signedIn(u, `Welcome, ${u.name.split(" ")[0]}! Your account is ready.`),
     onError: (e) => toast.error(e.message),
   });
 }

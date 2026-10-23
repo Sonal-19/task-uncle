@@ -25,7 +25,7 @@ let [user] = await db
   .from(usersTable)
   .where(eq(usersTable.email, ADMIN.email));
 if (!user) {
-  user = await createUser(ADMIN);
+  user = await createUser({ ...ADMIN, role: "admin" });
   console.info(`👤 Created ${ADMIN.email} / ${ADMIN.password}`);
 }
 

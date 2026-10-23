@@ -23,7 +23,10 @@ export const authProcessor = new Elysia({ name: "auth_processor" }).derive(
       if (!userId) return { auth: { user: null, token: null } };
 
       const user = await userCacheService.get(userId);
-      if (!user) return { auth: { user: null, token: null } };
+      // A disabled account is logged out everywhere.
+      if (user?.status !== "active")
+        return { auth: { user: null, token: null } };
+      userCacheService.touch(user);
 
       // Rolling expiry, at most once an hour per session: no DB write and
       // no Set-Cookie on the requests in between.
@@ -64,5 +67,19 @@ export const protectedUser = new Elysia({ name: "protected_user" })
         message: "You must be logged in to access this route",
       });
     }
+    return { user: auth.user, token: auth.token };
+  });
+
+/** `role = admin` only. Everyone else gets the same 404 as a route that
+ * doesn't exist. */
+export const protectedAdmin = new Elysia({ name: "protected_admin" })
+  .use(authProcessor)
+  .onBeforeHandle({ as: "scoped" }, ({ auth, status }) => {
+    if (auth?.user?.role !== "admin")
+      return status(404, { success: false, message: "Not found" });
+  })
+  .derive({ as: "scoped" }, ({ auth, status }) => {
+    if (auth?.user?.role !== "admin")
+      return status(404, { success: false, message: "Not found" });
     return { user: auth.user, token: auth.token };
   });

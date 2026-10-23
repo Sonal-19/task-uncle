@@ -121,8 +121,10 @@ let syncedFor: number | null = null;
 
 /** On every logged-in load. Never prompts: a browser that already allows
  * notifications is (re)registered to this session. */
-export async function syncPush(userId: number) {
+export async function syncPush(userId: number, allowed = true) {
   if (syncedFor === userId || !pushSupported()) return;
+  // Turned off by the admin: the server ignores this browser anyway.
+  if (!allowed) return;
   if (Notification.permission !== "granted") {
     void config().catch(() => {});
     return;
@@ -142,7 +144,9 @@ export async function syncPush(userId: number) {
 export async function resetPush() {
   syncedFor = null;
   try {
-    const sub = await (await registration())?.pushManager.getSubscription();
+    // Never wait for a worker here: logout must be instant.
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
     await sub?.unsubscribe();
   } catch {}
 }

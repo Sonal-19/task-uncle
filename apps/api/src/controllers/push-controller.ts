@@ -34,6 +34,11 @@ export const pushController = new Elysia({
     async ({ user, token, body, headers, status }) => {
       if (!pushService.enabled)
         return status(503, fail("Push is not set up on this server"));
+      if (user.notifyPermission === "off")
+        return status(
+          403,
+          fail("The admin has turned notifications off for this account"),
+        );
       const values = {
         userId: user.id,
         sessionToken: token,
@@ -73,6 +78,11 @@ export const pushController = new Elysia({
   )
   /** Sends a test push to every browser of the user. */
   .post("/test", async ({ user, status }) => {
+    if (user.notifyPermission === "off")
+      return status(
+        403,
+        fail("The admin has turned notifications off for this account"),
+      );
     const res = await pushService.sendToUser(user.id, [
       {
         title: "🔔 Test from Task Uncle",

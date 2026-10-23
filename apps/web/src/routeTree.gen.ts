@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as RegisterRouteImport } from './routes/register'
+import { Route as AppAdminRouteRouteImport } from './routes/_app/admin/route'
 import { Route as AppCalendarRouteImport } from './routes/_app/calendar'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppMoreRouteImport } from './routes/_app/more'
@@ -19,7 +21,14 @@ import { Route as AppNotificationsRouteImport } from './routes/_app/notification
 import { Route as AppPeopleRouteImport } from './routes/_app/people'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTasksRouteImport } from './routes/_app/tasks'
+import { Route as AppAdminIndexRouteImport } from './routes/_app/admin/index'
+import { Route as AppAdminDevicesRouteImport } from './routes/_app/admin/devices'
+import { Route as AppAdminMoreRouteImport } from './routes/_app/admin/more'
+import { Route as AppAdminRemindersRouteImport } from './routes/_app/admin/reminders'
+import { Route as AppAdminTasksRouteImport } from './routes/_app/admin/tasks'
 import { Route as AppEventsIndexRouteImport } from './routes/_app/events/index'
+import { Route as AppAdminUsersIndexRouteImport } from './routes/_app/admin/users/index'
+import { Route as AppAdminUsersUserIdRouteImport } from './routes/_app/admin/users/$userId'
 import { Route as AppEventsEventIdIndexRouteImport } from './routes/_app/events/$eventId/index'
 import { Route as AppEventsEventIdCategoryIdRouteImport } from './routes/_app/events/$eventId/$categoryId'
 
@@ -36,6 +45,16 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
+} as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppAdminRouteRoute = AppAdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppCalendarRoute = AppCalendarRouteImport.update({
   id: '/calendar',
@@ -72,10 +91,45 @@ const AppTasksRoute = AppTasksRouteImport.update({
   path: '/tasks',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminIndexRoute = AppAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
+const AppAdminDevicesRoute = AppAdminDevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
+const AppAdminMoreRoute = AppAdminMoreRouteImport.update({
+  id: '/more',
+  path: '/more',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
+const AppAdminRemindersRoute = AppAdminRemindersRouteImport.update({
+  id: '/reminders',
+  path: '/reminders',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
+const AppAdminTasksRoute = AppAdminTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
 const AppEventsIndexRoute = AppEventsIndexRouteImport.update({
   id: '/events/',
   path: '/events/',
   getParentRoute: () => AppRoute,
+} as any)
+const AppAdminUsersIndexRoute = AppAdminUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
+const AppAdminUsersUserIdRoute = AppAdminUsersUserIdRouteImport.update({
+  id: '/users/$userId',
+  path: '/users/$userId',
+  getParentRoute: () => AppAdminRouteRoute,
 } as any)
 const AppEventsEventIdIndexRoute = AppEventsEventIdIndexRouteImport.update({
   id: '/events/$eventId/',
@@ -92,6 +146,8 @@ const AppEventsEventIdCategoryIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/register': typeof RegisterRoute
+  '/admin': typeof AppAdminRouteRouteWithChildren
   '/calendar': typeof AppCalendarRoute
   '/dashboard': typeof AppDashboardRoute
   '/more': typeof AppMoreRoute
@@ -99,13 +155,21 @@ export interface FileRoutesByFullPath {
   '/people': typeof AppPeopleRoute
   '/settings': typeof AppSettingsRoute
   '/tasks': typeof AppTasksRoute
+  '/admin/devices': typeof AppAdminDevicesRoute
+  '/admin/more': typeof AppAdminMoreRoute
+  '/admin/reminders': typeof AppAdminRemindersRoute
+  '/admin/tasks': typeof AppAdminTasksRoute
+  '/admin/': typeof AppAdminIndexRoute
   '/events/': typeof AppEventsIndexRoute
+  '/admin/users/$userId': typeof AppAdminUsersUserIdRoute
   '/events/$eventId/$categoryId': typeof AppEventsEventIdCategoryIdRoute
+  '/admin/users/': typeof AppAdminUsersIndexRoute
   '/events/$eventId/': typeof AppEventsEventIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/register': typeof RegisterRoute
   '/calendar': typeof AppCalendarRoute
   '/dashboard': typeof AppDashboardRoute
   '/more': typeof AppMoreRoute
@@ -113,8 +177,15 @@ export interface FileRoutesByTo {
   '/people': typeof AppPeopleRoute
   '/settings': typeof AppSettingsRoute
   '/tasks': typeof AppTasksRoute
+  '/admin/devices': typeof AppAdminDevicesRoute
+  '/admin/more': typeof AppAdminMoreRoute
+  '/admin/reminders': typeof AppAdminRemindersRoute
+  '/admin/tasks': typeof AppAdminTasksRoute
+  '/admin': typeof AppAdminIndexRoute
   '/events': typeof AppEventsIndexRoute
+  '/admin/users/$userId': typeof AppAdminUsersUserIdRoute
   '/events/$eventId/$categoryId': typeof AppEventsEventIdCategoryIdRoute
+  '/admin/users': typeof AppAdminUsersIndexRoute
   '/events/$eventId': typeof AppEventsEventIdIndexRoute
 }
 export interface FileRoutesById {
@@ -122,6 +193,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/register': typeof RegisterRoute
+  '/_app/admin': typeof AppAdminRouteRouteWithChildren
   '/_app/calendar': typeof AppCalendarRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/more': typeof AppMoreRoute
@@ -129,8 +202,15 @@ export interface FileRoutesById {
   '/_app/people': typeof AppPeopleRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tasks': typeof AppTasksRoute
+  '/_app/admin/devices': typeof AppAdminDevicesRoute
+  '/_app/admin/more': typeof AppAdminMoreRoute
+  '/_app/admin/reminders': typeof AppAdminRemindersRoute
+  '/_app/admin/tasks': typeof AppAdminTasksRoute
+  '/_app/admin/': typeof AppAdminIndexRoute
   '/_app/events/': typeof AppEventsIndexRoute
+  '/_app/admin/users/$userId': typeof AppAdminUsersUserIdRoute
   '/_app/events/$eventId/$categoryId': typeof AppEventsEventIdCategoryIdRoute
+  '/_app/admin/users/': typeof AppAdminUsersIndexRoute
   '/_app/events/$eventId/': typeof AppEventsEventIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -138,6 +218,8 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/forgot-password'
+    | '/register'
+    | '/admin'
     | '/calendar'
     | '/dashboard'
     | '/more'
@@ -145,13 +227,21 @@ export interface FileRouteTypes {
     | '/people'
     | '/settings'
     | '/tasks'
+    | '/admin/devices'
+    | '/admin/more'
+    | '/admin/reminders'
+    | '/admin/tasks'
+    | '/admin/'
     | '/events/'
+    | '/admin/users/$userId'
     | '/events/$eventId/$categoryId'
+    | '/admin/users/'
     | '/events/$eventId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/forgot-password'
+    | '/register'
     | '/calendar'
     | '/dashboard'
     | '/more'
@@ -159,14 +249,23 @@ export interface FileRouteTypes {
     | '/people'
     | '/settings'
     | '/tasks'
+    | '/admin/devices'
+    | '/admin/more'
+    | '/admin/reminders'
+    | '/admin/tasks'
+    | '/admin'
     | '/events'
+    | '/admin/users/$userId'
     | '/events/$eventId/$categoryId'
+    | '/admin/users'
     | '/events/$eventId'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/forgot-password'
+    | '/register'
+    | '/_app/admin'
     | '/_app/calendar'
     | '/_app/dashboard'
     | '/_app/more'
@@ -174,8 +273,15 @@ export interface FileRouteTypes {
     | '/_app/people'
     | '/_app/settings'
     | '/_app/tasks'
+    | '/_app/admin/devices'
+    | '/_app/admin/more'
+    | '/_app/admin/reminders'
+    | '/_app/admin/tasks'
+    | '/_app/admin/'
     | '/_app/events/'
+    | '/_app/admin/users/$userId'
     | '/_app/events/$eventId/$categoryId'
+    | '/_app/admin/users/'
     | '/_app/events/$eventId/'
   fileRoutesById: FileRoutesById
 }
@@ -183,6 +289,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
+  RegisterRoute: typeof RegisterRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -207,6 +314,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/calendar': {
       id: '/_app/calendar'
@@ -257,12 +378,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTasksRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/': {
+      id: '/_app/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AppAdminIndexRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/devices': {
+      id: '/_app/admin/devices'
+      path: '/devices'
+      fullPath: '/admin/devices'
+      preLoaderRoute: typeof AppAdminDevicesRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/more': {
+      id: '/_app/admin/more'
+      path: '/more'
+      fullPath: '/admin/more'
+      preLoaderRoute: typeof AppAdminMoreRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/reminders': {
+      id: '/_app/admin/reminders'
+      path: '/reminders'
+      fullPath: '/admin/reminders'
+      preLoaderRoute: typeof AppAdminRemindersRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/tasks': {
+      id: '/_app/admin/tasks'
+      path: '/tasks'
+      fullPath: '/admin/tasks'
+      preLoaderRoute: typeof AppAdminTasksRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
     '/_app/events/': {
       id: '/_app/events/'
       path: '/events'
       fullPath: '/events/'
       preLoaderRoute: typeof AppEventsIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_app/admin/users/': {
+      id: '/_app/admin/users/'
+      path: '/users'
+      fullPath: '/admin/users/'
+      preLoaderRoute: typeof AppAdminUsersIndexRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/users/$userId': {
+      id: '/_app/admin/users/$userId'
+      path: '/users/$userId'
+      fullPath: '/admin/users/$userId'
+      preLoaderRoute: typeof AppAdminUsersUserIdRouteImport
+      parentRoute: typeof AppAdminRouteRoute
     }
     '/_app/events/$eventId/': {
       id: '/_app/events/$eventId/'
@@ -281,7 +451,32 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppAdminRouteRouteChildren {
+  AppAdminDevicesRoute: typeof AppAdminDevicesRoute
+  AppAdminMoreRoute: typeof AppAdminMoreRoute
+  AppAdminRemindersRoute: typeof AppAdminRemindersRoute
+  AppAdminTasksRoute: typeof AppAdminTasksRoute
+  AppAdminIndexRoute: typeof AppAdminIndexRoute
+  AppAdminUsersUserIdRoute: typeof AppAdminUsersUserIdRoute
+  AppAdminUsersIndexRoute: typeof AppAdminUsersIndexRoute
+}
+
+const AppAdminRouteRouteChildren: AppAdminRouteRouteChildren = {
+  AppAdminDevicesRoute: AppAdminDevicesRoute,
+  AppAdminMoreRoute: AppAdminMoreRoute,
+  AppAdminRemindersRoute: AppAdminRemindersRoute,
+  AppAdminTasksRoute: AppAdminTasksRoute,
+  AppAdminIndexRoute: AppAdminIndexRoute,
+  AppAdminUsersUserIdRoute: AppAdminUsersUserIdRoute,
+  AppAdminUsersIndexRoute: AppAdminUsersIndexRoute,
+}
+
+const AppAdminRouteRouteWithChildren = AppAdminRouteRoute._addFileChildren(
+  AppAdminRouteRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppAdminRouteRoute: typeof AppAdminRouteRouteWithChildren
   AppCalendarRoute: typeof AppCalendarRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppMoreRoute: typeof AppMoreRoute
@@ -295,6 +490,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRouteRoute: AppAdminRouteRouteWithChildren,
   AppCalendarRoute: AppCalendarRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppMoreRoute: AppMoreRoute,
@@ -313,6 +509,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  RegisterRoute: RegisterRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

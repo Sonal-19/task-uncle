@@ -167,6 +167,9 @@ async function backgroundCheck() {
   const tasks = data<Task[]>("tasks");
   const settings = data<Settings>("settings");
   if (!tasks || !settings) return; // logged out, or never loaded
+  // Turned off by the admin.
+  if (data<{ notifyPermission?: string }>("me")?.notifyPermission === "off")
+    return;
   const push = data<{ devices: number }>("push");
   if ((push?.devices ?? 0) > 0 && self.navigator.onLine) return;
 

@@ -7,6 +7,7 @@ import { useSettings } from "@/hooks/use-data";
 import { usePermission } from "@/hooks/use-permission";
 import { isIOS, isMobile, isStandalone, NOTIFY_DISMISSED } from "@/lib/pwa";
 import { showNotification } from "@/lib/reminders/notify";
+import { useAuthStore } from "@/stores/auth-store";
 
 type BannerState = "default" | "denied" | "ios-install" | "insecure";
 
@@ -53,7 +54,16 @@ export function PermissionBanner() {
     }
   });
 
-  if (!settings || settings.notifications === "off" || dismissed) return null;
+  const blockedByAdmin = useAuthStore(
+    (s) => s.user?.notifyPermission === "off",
+  );
+  if (
+    !settings ||
+    settings.notifications === "off" ||
+    dismissed ||
+    blockedByAdmin
+  )
+    return null;
   const state: BannerState | null = !window.isSecureContext
     ? "insecure"
     : perm === "unsupported"
