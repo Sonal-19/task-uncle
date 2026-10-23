@@ -5,6 +5,8 @@ import { tasksTable } from "$/db/schema";
 import { ownedCategory, ownsEvent, ownsPerson } from "$/lib/services/ownership";
 import { taskOut } from "$/lib/services/serialize";
 import {
+  CUSTOM_MINUTES_MAX,
+  CUSTOM_MINUTES_MIN,
   placeTask,
   priorities,
   statusPatch,
@@ -44,6 +46,12 @@ const taskBody = t.Object({
   amount: t.Nullable(t.Integer({ minimum: 1, maximum: 100_000_000_000 })),
   subtasks: t.Array(tSubtask, { maxItems: 100 }),
   reminder: tEnum(taskReminders),
+  /** Minutes, with reminder = custom. */
+  reminderMinutes: t.Optional(
+    t.Nullable(
+      t.Integer({ minimum: CUSTOM_MINUTES_MIN, maximum: CUSTOM_MINUTES_MAX }),
+    ),
+  ),
 });
 
 const extra = {

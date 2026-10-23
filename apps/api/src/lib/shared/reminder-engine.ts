@@ -116,13 +116,25 @@ export function settingsEvery(
     : INTERVAL_MS[settings.interval];
 }
 
+/** A task's own repeat; without minutes it falls back to the settings'. */
+function customEvery(
+  minutes: number | null,
+  settings: Pick<Settings, "interval" | "customMinutes">,
+) {
+  return minutes && minutes > 0
+    ? Math.max(minutes, CUSTOM_MINUTES_MIN) * 60_000
+    : settingsEvery(settings);
+}
+
 /** How often this task reminds, in ms (null = never). */
 export function intervalFor(t: Task, settings: Settings, now = new Date()) {
   if (t.reminder === "off") return null;
   const ms =
     t.reminder === "inherit"
       ? settingsEvery(settings)
-      : INTERVAL_MS[t.reminder];
+      : t.reminder === "custom"
+        ? customEvery(t.reminderMinutes, settings)
+        : INTERVAL_MS[t.reminder];
   return settings.overdueBoost === "on" && isOverdueAt(t, now, zoneOf(settings))
     ? ms / 2
     : ms;

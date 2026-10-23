@@ -38,6 +38,8 @@ export const tasksTable = pgTable(
     amount: pg.bigint({ mode: "number" }),
     subtasks: pg.jsonb().$type<Subtask[]>().notNull().default([]),
     reminder: taskReminderEnum("reminder").notNull().default("inherit"),
+    /** Minutes between reminders when `reminder` = custom. */
+    reminderMinutes: pg.integer("reminder_minutes"),
     snoozedUntil: pg.timestamp("snoozed_until", { withTimezone: true }),
     lastRemindedAt: pg.timestamp("last_reminded_at", { withTimezone: true }),
     startedAt: pg.timestamp("started_at", { withTimezone: true }),

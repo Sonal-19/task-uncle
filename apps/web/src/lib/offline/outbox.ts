@@ -44,6 +44,7 @@ export type TaskPatch = Partial<
     | "amount"
     | "subtasks"
     | "reminder"
+    | "reminderMinutes"
     | "snoozedUntil"
   >
 >;

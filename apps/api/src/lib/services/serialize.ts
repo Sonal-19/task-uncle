@@ -71,6 +71,7 @@ export const taskOut = (t: SelectTask): Task => ({
   amount: t.amount,
   subtasks: t.subtasks,
   reminder: t.reminder,
+  reminderMinutes: t.reminder === "custom" ? t.reminderMinutes : null,
   snoozedUntil: iso(t.snoozedUntil),
   lastRemindedAt: iso(t.lastRemindedAt),
   createdAt: t.createdAt.toISOString(),

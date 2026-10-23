@@ -9,7 +9,13 @@ export const taskStatuses = ["pending", "in_progress", "done"] as const;
 export const priorities = ["low", "medium", "high", "urgent"] as const;
 export const categoryKinds = ["general", "team"] as const;
 export const reminderEveries = ["1h", "5h", "12h", "24h"] as const;
-export const taskReminders = ["inherit", "off", ...reminderEveries] as const;
+/** `custom` = every `reminderMinutes`. */
+export const taskReminders = [
+  "inherit",
+  "off",
+  ...reminderEveries,
+  "custom",
+] as const;
 export const onOff = ["on", "off"] as const;
 
 export type EventStatus = (typeof eventStatuses)[number];
@@ -77,6 +83,8 @@ export type Task = {
   amount: number | null;
   subtasks: Subtask[];
   reminder: TaskReminder;
+  /** Minutes between reminders when `reminder` is "custom" (else null). */
+  reminderMinutes: number | null;
   snoozedUntil: string | null;
   lastRemindedAt: string | null;
   createdAt: string;

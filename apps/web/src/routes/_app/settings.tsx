@@ -15,12 +15,15 @@ import { SectionCard } from "@/components/app/section-card";
 import { ShortcutKeys } from "@/components/app/shortcuts";
 import { THEMES } from "@/components/app/user-menu";
 import { confirm } from "@/components/common/confirm-dialog";
+import {
+  DurationPicker,
+  validRepeat,
+} from "@/components/common/duration-picker";
 import { Field } from "@/components/common/field";
 import { PageHeader } from "@/components/common/page-header";
 import { PageLoader } from "@/components/common/states";
 import { TimeInput } from "@/components/common/time-input";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useSettings, useUpdateSettings } from "@/hooks/use-data";
 import { usePermission } from "@/hooks/use-permission";
@@ -35,13 +38,7 @@ import {
 } from "@/lib/offline/sync";
 import { showNotification } from "@/lib/reminders/notify";
 import { inQuietHours } from "@/lib/reminders/reminder-engine";
-import {
-  CUSTOM_MINUTES_MAX,
-  CUSTOM_MINUTES_MIN,
-  everyLabel,
-  INTERVALS,
-  type Settings,
-} from "@/lib/types";
+import { everyLabel, INTERVALS, type Settings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useThemeStore } from "@/stores/theme-store";
@@ -470,7 +467,6 @@ const CHOICE =
   "rounded-xl border px-3 py-3 text-sm font-medium transition-colors";
 const CHOSEN =
   "border-primary bg-accent text-accent-foreground ring-2 ring-primary/20";
-const QUICK = [15, 30, 45, 90, 120, 180];
 
 /** The four presets plus a custom repeat (hours + minutes). */
 function RepeatPicker({
@@ -482,21 +478,15 @@ function RepeatPicker({
 }) {
   const custom = s.customMinutes;
   const [open, setOpen] = useState(custom !== null);
-  const [hours, setHours] = useState(String(Math.floor((custom ?? 30) / 60)));
-  const [mins, setMins] = useState(String((custom ?? 30) % 60));
-  const total = (Number(hours) || 0) * 60 + (Number(mins) || 0);
-  const invalid = total < CUSTOM_MINUTES_MIN || total > CUSTOM_MINUTES_MAX;
-  const unchanged = custom === total;
+  const [draft, setDraft] = useState(custom ?? 30);
+  const invalid = !validRepeat(draft);
+  const unchanged = custom === draft;
 
-  const pick = (m: number) => {
-    setHours(String(Math.floor(m / 60)));
-    setMins(String(m % 60));
-  };
   const save = () => {
     if (invalid) return;
-    onChange({ customMinutes: total });
+    onChange({ customMinutes: draft });
     toast.success(
-      `Pending tasks will remind ${everyLabel(total).toLowerCase()}`,
+      `Pending tasks will remind ${everyLabel(draft).toLowerCase()}`,
     );
   };
 
@@ -535,67 +525,20 @@ function RepeatPicker({
       </div>
 
       {open && (
-        <div className="space-y-3 rounded-xl border bg-muted/40 p-3">
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Hours
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={168}
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                className="w-20"
-                aria-label="Custom repeat hours"
-              />
-            </label>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Minutes
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={59}
-                step={5}
-                value={mins}
-                onChange={(e) => setMins(e.target.value)}
-                className="w-20"
-                aria-label="Custom repeat minutes"
-              />
-            </label>
+        <DurationPicker
+          value={draft}
+          onChange={setDraft}
+          quick={[15, 30, 45, 90, 120, 180]}
+          label="Custom repeat"
+          hint={(m) =>
+            `${everyLabel(m)} for every pending task (tasks with their own interval keep it).`
+          }
+          action={
             <Button onClick={save} disabled={invalid || unchanged}>
               {unchanged ? "Saved" : "Save"}
             </Button>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {QUICK.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => pick(m)}
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-xs font-medium",
-                  total === m
-                    ? "border-primary bg-accent text-accent-foreground"
-                    : "bg-background hover:bg-muted",
-                )}
-              >
-                {everyLabel(m).replace("Every ", "")}
-              </button>
-            ))}
-          </div>
-          <p
-            className={cn(
-              "text-xs",
-              invalid ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {invalid
-              ? `Choose between ${CUSTOM_MINUTES_MIN} minutes and 7 days.`
-              : `${everyLabel(total)} for every pending task (tasks with their own interval keep it).`}
-          </p>
-        </div>
+          }
+        />
       )}
     </div>
   );

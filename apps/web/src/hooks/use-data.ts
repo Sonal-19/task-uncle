@@ -42,6 +42,7 @@ export type TaskInput = Pick<
   | "amount"
   | "subtasks"
   | "reminder"
+  | "reminderMinutes"
 > & { status?: TaskStatus };
 
 export const useEvents = () =>

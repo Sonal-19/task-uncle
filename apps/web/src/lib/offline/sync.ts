@@ -244,6 +244,7 @@ async function send(op: Op) {
           amount: r.amount,
           subtasks: r.subtasks,
           reminder: r.reminder,
+          reminderMinutes: r.reminderMinutes,
           editedAt: op.at,
         }),
       );

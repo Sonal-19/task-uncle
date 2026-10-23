@@ -146,6 +146,7 @@ export function buildSeed(now = new Date()): DataState {
     amount: null,
     subtasks: [],
     reminder: "inherit",
+    reminderMinutes: null,
     snoozedUntil: null,
     lastRemindedAt: null,
     createdAt: created,

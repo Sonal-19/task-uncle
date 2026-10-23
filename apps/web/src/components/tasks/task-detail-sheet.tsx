@@ -48,7 +48,7 @@ import {
 import { nextReminderAt } from "@/lib/reminders/reminder-engine";
 import { cn } from "@/lib/utils";
 import { useSheets } from "@/stores/sheet-store";
-import { REMINDER_LABEL } from "./task-sheet";
+import { reminderLabel } from "./task-sheet";
 
 export function TaskDetailSheet() {
   const id = useSheets((s) => s.detailId);
@@ -180,7 +180,7 @@ export function TaskDetailSheet() {
                 ? "Off"
                 : next
                   ? `Next ${formatUpcoming(next)}`
-                  : REMINDER_LABEL[task.reminder]}
+                  : reminderLabel(task)}
           </Info>
         </dl>
 

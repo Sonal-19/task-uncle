@@ -183,6 +183,13 @@ export async function replaceAll(userId: number, input: unknown) {
             : null,
         subtasks,
         reminder: oneOf(t.reminder, taskReminders, "inherit"),
+        reminderMinutes:
+          t.reminder === "custom" &&
+          Number.isInteger(t.reminderMinutes) &&
+          (t.reminderMinutes as number) >= CUSTOM_MINUTES_MIN &&
+          (t.reminderMinutes as number) <= CUSTOM_MINUTES_MAX
+            ? (t.reminderMinutes as number)
+            : null,
         snoozedUntil: stamp(t.snoozedUntil),
         lastRemindedAt: stamp(t.lastRemindedAt),
         startedAt: stamp(t.startedAt),

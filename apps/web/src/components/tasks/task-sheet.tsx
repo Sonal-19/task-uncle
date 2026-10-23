@@ -1,6 +1,10 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DateInput } from "@/components/common/date-input";
+import {
+  DurationPicker,
+  validRepeat,
+} from "@/components/common/duration-picker";
 import { Field } from "@/components/common/field";
 import { ResponsiveSheet } from "@/components/common/responsive-sheet";
 import { Segmented } from "@/components/common/segmented";
@@ -20,12 +24,14 @@ import {
 } from "@/hooks/use-data";
 import { fromAmount, toAmount, todayStr, uid } from "@/lib/format";
 import {
+  everyLabel,
   INTERVALS,
   PRIORITIES,
   type Priority,
   STATUSES,
   type Subtask,
   settingsLabel,
+  type Task,
   type TaskReminder,
   type TaskStatus,
 } from "@/lib/types";
@@ -42,6 +48,8 @@ type Form = {
   assigneeId: string;
   amount: string;
   reminder: TaskReminder;
+  /** Repeat for `reminder` = custom. */
+  reminderMinutes: number;
   notes: string;
   subtasks: Subtask[];
 };
@@ -74,6 +82,7 @@ export function TaskSheet() {
         assigneeId: editing.assigneeId ?? "",
         amount: editing.amount ? String(fromAmount(editing.amount)) : "",
         reminder: editing.reminder,
+        reminderMinutes: editing.reminderMinutes ?? 120,
         notes: editing.notes,
         subtasks: editing.subtasks,
       });
@@ -118,6 +127,7 @@ export function TaskSheet() {
       assigneeId: f.assigneeId || null,
       amount: f.amount ? toAmount(Number(f.amount)) : null,
       reminder: f.reminder,
+      reminderMinutes: f.reminder === "custom" ? f.reminderMinutes : null,
       notes: f.notes.trim(),
       subtasks: newSub.trim()
         ? [...f.subtasks, { id: uid(), title: newSub.trim(), doneAt: null }]
@@ -274,10 +284,23 @@ export function TaskSheet() {
                     : "As in settings",
                 },
                 ...INTERVALS,
+                { value: "custom", label: "Custom…" },
                 { value: "off", label: "Don't remind" },
               ]}
             />
           </Field>
+          {f.reminder === "custom" && (
+            <DurationPicker
+              // Fresh drafts each time the sheet opens.
+              key={`${open}-${editing?.id ?? "new"}`}
+              value={f.reminderMinutes}
+              onChange={(m) => set("reminderMinutes", m)}
+              label="Task reminder"
+              hint={(m) =>
+                `This task reminds ${everyLabel(m).toLowerCase()} until it's done.`
+              }
+            />
+          )}
 
           <Field label="Checklist">
             <div className="space-y-2">
@@ -350,7 +373,11 @@ export function TaskSheet() {
             <Button
               type="submit"
               className="flex-1"
-              disabled={busy || !f.title.trim()}
+              disabled={
+                busy ||
+                !f.title.trim() ||
+                (f.reminder === "custom" && !validRepeat(f.reminderMinutes))
+              }
             >
               {editing ? "Save" : "Add task"}
             </Button>
@@ -373,13 +400,17 @@ function blank(): Form {
     assigneeId: "",
     amount: "",
     reminder: "inherit",
+    reminderMinutes: 120,
     notes: "",
     subtasks: [],
   };
 }
 
-export const REMINDER_LABEL: Record<TaskReminder, string> = {
-  inherit: "As in settings",
-  off: "Off",
-  ...Object.fromEntries(INTERVALS.map((i) => [i.value, i.label])),
-} as Record<TaskReminder, string>;
+/** A task's repeat as text: "Every 2 h", "As in settings", "Off". */
+export function reminderLabel(t: Pick<Task, "reminder" | "reminderMinutes">) {
+  if (t.reminder === "inherit") return "As in settings";
+  if (t.reminder === "off") return "Off";
+  if (t.reminder === "custom")
+    return t.reminderMinutes ? everyLabel(t.reminderMinutes) : "As in settings";
+  return INTERVALS.find((i) => i.value === t.reminder)?.label ?? "";
+}
