@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { confirm } from "@/components/common/confirm-dialog";
 import { api, call } from "@/lib/api";
 import { claimDevice, forgetDevice, pendingCount } from "@/lib/offline/sync";
+import { resetPush, syncPush } from "@/lib/push";
 import { offerInstallAgain } from "@/lib/pwa";
 import { keys } from "@/lib/query-keys";
 import { useAuthStore } from "@/stores/auth-store";
@@ -29,7 +30,10 @@ export function useSession() {
     if (me.data) useAuthStore.getState().setUser(me.data);
   }, [me.data]);
   useEffect(() => {
-    if (user) void claimDevice(user.id);
+    if (!user) return;
+    void claimDevice(user.id);
+    // A browser that already allows notifications gets server reminders.
+    void syncPush(user.id);
   }, [user?.id]);
 }
 
@@ -63,6 +67,7 @@ export function useLogout() {
       }))
     )
       return;
+    await resetPush();
     // Offline is fine: the cookie just expires on its own.
     await call(api.auth.logout.post()).catch(() => {});
     useAuthStore.getState().clearUser();

@@ -23,13 +23,16 @@ export const usePwa = create<PwaState>(() => ({
   update: () => window.location.reload(),
 }));
 
-/** "Not now" on the dashboard's install card; cleared on every login so
- * the offer shows again after the next sign-in. */
+/** "Not now" on the dashboard's install card and notification banner.
+ * Kept per device (not in the synced settings, so dismissing on one device
+ * doesn't hide them on another) and cleared on every login. */
 export const INSTALL_DISMISSED = "tu-install-dismissed";
+export const NOTIFY_DISMISSED = "tu-notify-dismissed";
 
 export function offerInstallAgain() {
   try {
     localStorage.removeItem(INSTALL_DISMISSED);
+    localStorage.removeItem(NOTIFY_DISMISSED);
   } catch {}
 }
 
@@ -39,12 +42,23 @@ export const isStandalone = () =>
 
 /** iPhone/iPad Safari: no install API, only Share → Add to Home Screen. */
 export const isIOS = () =>
-  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  !/Android/i.test(navigator.userAgent) &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    // iPadOS reports itself as a Mac.
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
-/** Can we offer an install at all on this browser? */
+/** A phone or tablet (touch-first). */
+export const isMobile = () =>
+  /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent) ||
+  isIOS() ||
+  window.matchMedia("(pointer: coarse)").matches;
+
+/** Can we offer an install on this browser? Desktop: only when the browser
+ * offers it. Phones: always (until installed) — Chrome on Android often
+ * holds `beforeinstallprompt` back, and Samsung Internet, Firefox or in-app
+ * browsers never send it, so the button then shows the menu steps. */
 export const canOfferInstall = (s: PwaState) =>
-  !isStandalone() && (!!s.installEvent || isIOS());
+  !isStandalone() && (!!s.installEvent || isMobile());
 
 /** Shows the browser's own install dialog. */
 export async function installApp() {

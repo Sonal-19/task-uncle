@@ -86,12 +86,17 @@ export type Task = {
 export type Settings = {
   notifications: OnOff;
   interval: ReminderEvery;
+  /** Custom repeat in minutes; when set it replaces `interval`. */
+  customMinutes: number | null;
   /** "HH:mm" window when no reminders are sent; null = never quiet. */
   quietHours: { from: string; to: string } | null;
   /** Overdue tasks remind twice as often. */
   overdueBoost: OnOff;
   /** Banner on the dashboard asking for permission was dismissed at. */
   permissionPromptDismissedAt: string | null;
+  /** IANA zone the user's browser reported, for quiet hours and due times
+   * when the server sends reminders. null = not reported yet. */
+  timezone: string | null;
 };
 
 export type NotificationLog = {
@@ -123,6 +128,27 @@ export const INTERVALS: { value: ReminderEvery; label: string }[] = [
   { value: "24h", label: "Once a day" },
 ];
 
+/** Limits of the custom repeat (the engine checks once a minute). */
+export const CUSTOM_MINUTES_MIN = 5;
+export const CUSTOM_MINUTES_MAX = 7 * 24 * 60;
+
+/** "Every 1 h 30 min", "Every 45 min", "Every 2 days". */
+export function everyLabel(minutes: number) {
+  if (minutes % 1440 === 0) {
+    const d = minutes / 1440;
+    return `Every ${d === 1 ? "day" : `${d} days`}`;
+  }
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `Every ${[h && `${h} h`, m && `${m} min`].filter(Boolean).join(" ")}`;
+}
+
+/** The settings' repeat as text ("Every hour", "Every 1 h 30 min"). */
+export function settingsLabel(s: Pick<Settings, "interval" | "customMinutes">) {
+  if (s.customMinutes) return everyLabel(s.customMinutes);
+  return INTERVALS.find((i) => i.value === s.interval)?.label ?? "Every hour";
+}
+
 export const INTERVAL_MS: Record<ReminderEvery, number> = {
   "1h": 3_600_000,
   "5h": 5 * 3_600_000,
@@ -143,9 +169,11 @@ export type DataState = {
 export const DEFAULT_SETTINGS: Settings = {
   notifications: "on",
   interval: "1h",
+  customMinutes: null,
   quietHours: { from: "22:00", to: "07:00" },
   overdueBoost: "on",
   permissionPromptDismissedAt: null,
+  timezone: null,
 };
 
 /** A category with members is a team. */

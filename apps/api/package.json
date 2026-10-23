@@ -18,12 +18,14 @@
     "date-fns": "^4.1.0",
     "drizzle-orm": "catalog:",
     "elysia": "catalog:",
-    "nodemailer": "^10.0.1"
+    "nodemailer": "^10.0.1",
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
     "@types/bun": "^1.4.1",
     "@types/nodemailer": "^8.0.1",
+    "@types/web-push": "^3.6.4",
     "drizzle-kit": "catalog:",
     "pg": "latest",
     "typescript": "catalog:"

@@ -7,19 +7,28 @@ import {
   markReminded,
   setTaskStatus,
   snoozeTask,
+  updateSettings,
+  useSettings,
 } from "@/hooks/use-data";
 import { queryClient as qc } from "@/integrations/tanstack-query/root-provider";
 import { fetchers } from "@/lib/fetchers";
-import { isOverdue } from "@/lib/format";
+import { useOutbox } from "@/lib/offline/outbox";
+import { refresh } from "@/lib/offline/sync";
+import type { PushConfig } from "@/lib/push";
 import { keys } from "@/lib/query-keys";
 import { permission, showNotification } from "@/lib/reminders/notify";
-import { dueReminders } from "@/lib/reminders/reminder-engine";
-import { PRIORITY_RANK } from "@/lib/task-utils";
+import { planReminders } from "@/lib/reminders/reminder-engine";
 import type { Category, Task, TaskEvent } from "@/lib/types";
 
 const CHECK_EVERY = 60_000;
-/** Individual notifications per check; the rest go into one summary. */
-const MAX_SINGLE = 3;
+
+/** The API's scheduler sends this user's reminders by Web Push while it is
+ * reachable and at least one of their browsers is subscribed; this engine
+ * then stands down (no double reminders) and takes over offline. */
+export function serverReminds() {
+  const devices = qc.getQueryData<PushConfig>(keys.push)?.devices ?? 0;
+  return devices > 0 && navigator.onLine && useOutbox.getState().online;
+}
 
 function label(t: Task) {
   const ev = qc
@@ -48,8 +57,8 @@ async function load() {
   return { tasks, settings };
 }
 
-/** One pass of the engine: stamp `lastRemindedAt`, then notify. `force`
- * treats every pending task as due (Settings → Remind me now). */
+/** One pass of the in-app engine: stamp `lastRemindedAt`, then notify.
+ * `force` treats every pending task as due (Settings → Remind me now). */
 export async function runReminderCheck(now = new Date(), force = false) {
   const data = await load().catch(() => null);
   if (!data) return 0;
@@ -60,39 +69,14 @@ export async function runReminderCheck(now = new Date(), force = false) {
         lastRemindedAt: new Date(0).toISOString(),
       }))
     : data.tasks;
-  const due = dueReminders(tasks, settings, now).sort(
-    (a, b) =>
-      Number(isOverdue(b, now)) - Number(isOverdue(a, now)) ||
-      PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority],
-  );
+  if (!force && serverReminds()) return 0;
+  const { due, entries } = planReminders(tasks, settings, label, now);
   if (!due.length) return 0;
 
-  const at = now.toISOString();
   markReminded(
     due.map((t) => t.id),
-    at,
+    now.toISOString(),
   );
-
-  const entries: {
-    taskId: string | null;
-    title: string;
-    body: string;
-    sentAt: string;
-  }[] = due.slice(0, MAX_SINGLE).map((t) => ({
-    taskId: t.id,
-    title: `${isOverdue(t, now) ? "Overdue" : "Pending"}: ${t.title}`,
-    body: label(t),
-    sentAt: at,
-  }));
-  if (due.length > MAX_SINGLE) {
-    const open = tasks.filter((t) => t.status !== "done");
-    entries.push({
-      taskId: null,
-      title: `You have ${open.length} pending tasks`,
-      body: `${open.filter((t) => isOverdue(t, now)).length} overdue — open Task Uncle to clear them`,
-      sentAt: at,
-    });
-  }
   addLog(entries);
 
   if (permission() === "granted") {
@@ -117,6 +101,16 @@ export async function runReminderCheck(now = new Date(), force = false) {
  * applies Mark done / Snooze taps coming from the service worker. */
 export function useReminders() {
   const navigate = useNavigate();
+
+  // The server reminds by this browser's clock: quiet hours and due times
+  // are wall-clock times, so tell it the timezone (once, and on a change).
+  const savedZone = useSettings().data?.timezone;
+  const loaded = useSettings().isSuccess;
+  useEffect(() => {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (loaded && zone && savedZone !== zone)
+      updateSettings({ timezone: zone });
+  }, [loaded, savedZone]);
 
   useEffect(() => {
     let first: ReturnType<typeof setTimeout> | undefined;
@@ -146,6 +140,10 @@ export function useReminders() {
 
     const onMessage = (e: MessageEvent) => {
       const msg = e.data as { type?: string; taskId?: string; action?: string };
+      // A push arrived, or the worker changed a task itself: pull fresh data
+      // (new reminder times, bell entries).
+      if (msg?.type === "push-received" || msg?.type === "refresh")
+        return void refresh();
       if (msg?.type !== "task-action" || !msg.taskId) return;
       applyTaskAction(msg.taskId, msg.action);
       if (!msg.action) navigate({ to: "/tasks", search: { task: msg.taskId } });

@@ -7,4 +7,5 @@ export * from "./tasks/settings.sql";
 export * from "./tasks/tasks.sql";
 export * from "./users/auths.sql";
 export * from "./users/email-otps.sql";
+export * from "./users/push-subscriptions.sql";
 export * from "./users/users.sql";

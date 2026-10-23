@@ -9,6 +9,8 @@ import {
   userSettingsTable,
 } from "$/db/schema";
 import {
+  CUSTOM_MINUTES_MAX,
+  CUSTOM_MINUTES_MIN,
   type DataState,
   DEFAULT_SETTINGS,
   eventStatuses,
@@ -204,10 +206,17 @@ export async function replaceAll(userId: number, input: unknown) {
     userId,
     notifications: oneOf(s.notifications, onOff, "on"),
     interval: oneOf(s.interval, reminderEveries, "1h"),
+    customMinutes:
+      Number.isInteger(s.customMinutes) &&
+      (s.customMinutes as number) >= CUSTOM_MINUTES_MIN &&
+      (s.customMinutes as number) <= CUSTOM_MINUTES_MAX
+        ? (s.customMinutes as number)
+        : null,
     quietFrom: time(quiet?.from),
     quietTo: time(quiet?.to),
     overdueBoost: oneOf(s.overdueBoost, onOff, "on"),
     permissionPromptDismissedAt: stamp(s.permissionPromptDismissedAt),
+    timezone: typeof s.timezone === "string" ? s.timezone.slice(0, 64) : null,
   };
 
   await db.transaction(async (tx) => {

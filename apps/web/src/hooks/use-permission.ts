@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { enablePush } from "@/lib/push";
 import {
   type Permission,
   permission,
@@ -21,6 +22,10 @@ export function usePermission() {
   const request = useCallback(async () => {
     const next = await requestPermission();
     setState(next);
+    // Allowed: also register this browser for server reminders (Web Push),
+    // so they arrive with the app closed.
+    if (next === "granted")
+      void enablePush().catch((e) => console.warn("[Push] enable failed", e));
     return next;
   }, []);
   return [state, request] as const;

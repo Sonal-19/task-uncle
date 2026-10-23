@@ -4,6 +4,7 @@ import { mainController } from "./controllers";
 import { connectionTest } from "./db/connect";
 import { ALLOWED_ORIGIN_HOSTS, IS_PROD, PORT } from "./env";
 import { coreAuthService } from "./lib/services/core-auth-service";
+import { reminderService } from "./lib/services/reminder-service";
 
 const app = new Elysia({ name: "main_app" })
   .use(
@@ -28,6 +29,7 @@ export type Server = typeof app;
 connectionTest().then(async (res) => {
   if (res) {
     await coreAuthService.initialize();
+    reminderService.start();
     app.listen(PORT);
     console.info(`ENV is ${process.env.NODE_ENV}`);
     console.info(

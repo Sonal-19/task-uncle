@@ -1,4 +1,4 @@
-import { Download, Share, SquarePlus, X } from "lucide-react";
+import { Download, EllipsisVertical, Share, SquarePlus, X } from "lucide-react";
 import { useState } from "react";
 import { ResponsiveSheet } from "@/components/common/responsive-sheet";
 import { Button } from "@/components/ui/button";
@@ -12,36 +12,87 @@ import {
 } from "@/lib/pwa";
 import { cn } from "@/lib/utils";
 
-function useInstall() {
+export function useInstall() {
   const available = usePwa(canOfferInstall);
-  const [iosHelp, setIosHelp] = useState(false);
+  const [help, setHelp] = useState(false);
   const install = async () => {
-    if (isIOS() && !usePwa.getState().installEvent) setIosHelp(true);
-    else await installApp();
+    // One tap when the browser offers it, else how to do it by hand.
+    if (usePwa.getState().installEvent) await installApp();
+    else setHelp(true);
   };
-  const help = (
+  const ios = isIOS();
+  const steps = ios
+    ? [
+        {
+          icon: Share,
+          text: (
+            <>
+              Tap <b>Share</b> in Safari's toolbar (in Chrome, the share icon in
+              the address bar).
+            </>
+          ),
+        },
+        {
+          icon: SquarePlus,
+          text: (
+            <>
+              Choose <b>Add to Home Screen</b>, then <b>Add</b>.
+            </>
+          ),
+        },
+      ]
+    : [
+        {
+          icon: EllipsisVertical,
+          text: (
+            <>
+              Open the browser menu (<b>⋮</b> at the top right, or <b>≡</b> at
+              the bottom in Samsung Internet).
+            </>
+          ),
+        },
+        {
+          icon: SquarePlus,
+          text: (
+            <>
+              Tap <b>Install app</b> or <b>Add to Home screen</b>, then{" "}
+              <b>Install</b>.
+            </>
+          ),
+        },
+      ];
+  const helpSheet = (
     <ResponsiveSheet
-      open={iosHelp}
-      onOpenChange={setIosHelp}
-      title="Add to Home Screen"
-      description="Safari on iPhone and iPad installs apps from the Share menu."
+      open={help}
+      onOpenChange={setHelp}
+      title={ios ? "Add to Home Screen" : "Install Task Uncle"}
+      description={
+        ios
+          ? "iPhone and iPad install apps from the Share menu. Once installed, Task Uncle can also send you notifications."
+          : "Your browser installs apps from its menu."
+      }
     >
       <ol className="space-y-3 text-sm">
-        <li className="flex items-center gap-3">
-          <Share className="size-5 shrink-0 text-primary" />
-          Tap <b>Share</b> in Safari's toolbar.
-        </li>
-        <li className="flex items-center gap-3">
-          <SquarePlus className="size-5 shrink-0 text-primary" />
-          Choose <b>Add to Home Screen</b>, then <b>Add</b>.
-        </li>
+        {steps.map((st, i) => (
+          <li key={i} className="flex items-center gap-3">
+            <st.icon className="size-5 shrink-0 text-primary" />
+            <span>{st.text}</span>
+          </li>
+        ))}
       </ol>
-      <Button className="mt-5 w-full" onClick={() => setIosHelp(false)}>
+      {!window.isSecureContext && (
+        <p className="mt-4 rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+          This page is open over plain http, so the browser can only add a
+          shortcut. Open the https address to install the full app (offline and
+          notifications).
+        </p>
+      )}
+      <Button className="mt-5 w-full" onClick={() => setHelp(false)}>
         Got it
       </Button>
     </ResponsiveSheet>
   );
-  return { available, install, help };
+  return { available, install, help: helpSheet };
 }
 
 /** "Install app" in one click (sidebar, settings). Hidden once installed,

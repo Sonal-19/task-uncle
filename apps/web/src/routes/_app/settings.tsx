@@ -8,7 +8,7 @@ import {
   Upload,
   User,
 } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { InstallButton } from "@/components/app/install-app";
 import { SectionCard } from "@/components/app/section-card";
@@ -20,9 +20,11 @@ import { PageHeader } from "@/components/common/page-header";
 import { PageLoader } from "@/components/common/states";
 import { TimeInput } from "@/components/common/time-input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useSettings, useUpdateSettings } from "@/hooks/use-data";
 import { usePermission } from "@/hooks/use-permission";
+import { usePush } from "@/hooks/use-push";
 import { runReminderCheck } from "@/hooks/use-reminders";
 import { api, callMsg } from "@/lib/api";
 import {
@@ -33,7 +35,13 @@ import {
 } from "@/lib/offline/sync";
 import { showNotification } from "@/lib/reminders/notify";
 import { inQuietHours } from "@/lib/reminders/reminder-engine";
-import { INTERVALS } from "@/lib/types";
+import {
+  CUSTOM_MINUTES_MAX,
+  CUSTOM_MINUTES_MIN,
+  everyLabel,
+  INTERVALS,
+  type Settings,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useThemeStore } from "@/stores/theme-store";
@@ -57,6 +65,7 @@ function SettingsPage() {
   const settingsQ = useSettings();
   const update = useUpdateSettings();
   const [perm, request] = usePermission();
+  const push = usePush();
   const { theme, setTheme } = useThemeStore();
   const user = useAuthStore((s) => s.user);
   const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
@@ -77,12 +86,41 @@ function SettingsPage() {
       );
       return;
     }
+    // With push on, the test goes through the server like real reminders.
+    if (push.state === "on") {
+      try {
+        const { message } = await callMsg(api.push.test.post());
+        toast.success(message);
+        return;
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
+    }
     await showNotification({
       title: "🔔 Test from Task Uncle",
       body: "This is how your pending-task reminders will look.",
       tag: "test",
     });
     toast.success("Test notification sent");
+  }
+
+  async function togglePush(v: boolean) {
+    if (!v) {
+      await push.disable();
+      toast.info("This device now gets reminders only while the app is open");
+      return;
+    }
+    try {
+      const next = await push.enable();
+      if (next === "on")
+        toast.success("Reminders will reach this device even when closed");
+      else if (next === "blocked")
+        toast.error("Notifications are blocked for this site in your browser.");
+      else if (next === "unconfigured")
+        toast.error("Push isn't set up on the server yet.");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not turn push on");
+    }
   }
 
   async function remindNow() {
@@ -213,25 +251,37 @@ function SettingsPage() {
             </div>
           </div>
 
+          <Row
+            title="When the app is closed"
+            text={
+              push.state === "on"
+                ? "On — this device gets reminders through the server, even with the app closed. With no internet they arrive once it reconnects."
+                : push.state === "unsupported"
+                  ? "This browser can't receive push. On iPhone, install the app to the Home Screen first. Reminders still come while the app is open."
+                  : push.state === "blocked"
+                    ? "Blocked in the browser's site settings."
+                    : "Off — reminders only come while the app is open."
+            }
+          >
+            <Switch
+              checked={push.state === "on"}
+              disabled={
+                !on ||
+                push.state === null ||
+                push.state === "unsupported" ||
+                push.state === "blocked"
+              }
+              onCheckedChange={(v) => void togglePush(v)}
+              aria-label="Reminders when the app is closed"
+            />
+          </Row>
+
           <fieldset disabled={!on} className="space-y-5 disabled:opacity-50">
             <Field label="Repeat reminder for each pending task">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {INTERVALS.map((i) => (
-                  <button
-                    key={i.value}
-                    type="button"
-                    onClick={() => update.mutate({ interval: i.value })}
-                    className={cn(
-                      "rounded-xl border px-3 py-3 text-sm font-medium transition-colors",
-                      s.interval === i.value
-                        ? "border-primary bg-accent text-accent-foreground ring-2 ring-primary/20"
-                        : "hover:bg-muted",
-                    )}
-                  >
-                    {i.label}
-                  </button>
-                ))}
-              </div>
+              <RepeatPicker
+                settings={s}
+                onChange={(patch) => update.mutate(patch)}
+              />
             </Field>
 
             <Row
@@ -305,9 +355,12 @@ function SettingsPage() {
           </fieldset>
 
           <p className="rounded-xl border border-dashed p-3 text-xs text-muted-foreground">
-            Reminders are sent while Task Uncle is open in a tab or installed as
-            an app. Tip: on phones, use “Add to Home screen”. Each task can
-            override the interval (or turn reminders off) from its edit form.
+            With “When the app is closed” on, the server sends reminders to this
+            device even when Task Uncle is closed; with no internet, the open
+            app reminds from what is saved on the device, and an installed app
+            (Chrome) also checks in the background now and then. Tip: on phones,
+            use “Add to Home screen”. Each task can override the interval (or
+            turn reminders off) from its edit form.
           </p>
         </div>
       </SectionCard>
@@ -409,6 +462,141 @@ function SettingsPage() {
           </Button>
         </div>
       </SectionCard>
+    </div>
+  );
+}
+
+const CHOICE =
+  "rounded-xl border px-3 py-3 text-sm font-medium transition-colors";
+const CHOSEN =
+  "border-primary bg-accent text-accent-foreground ring-2 ring-primary/20";
+const QUICK = [15, 30, 45, 90, 120, 180];
+
+/** The four presets plus a custom repeat (hours + minutes). */
+function RepeatPicker({
+  settings: s,
+  onChange,
+}: {
+  settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
+}) {
+  const custom = s.customMinutes;
+  const [open, setOpen] = useState(custom !== null);
+  const [hours, setHours] = useState(String(Math.floor((custom ?? 30) / 60)));
+  const [mins, setMins] = useState(String((custom ?? 30) % 60));
+  const total = (Number(hours) || 0) * 60 + (Number(mins) || 0);
+  const invalid = total < CUSTOM_MINUTES_MIN || total > CUSTOM_MINUTES_MAX;
+  const unchanged = custom === total;
+
+  const pick = (m: number) => {
+    setHours(String(Math.floor(m / 60)));
+    setMins(String(m % 60));
+  };
+  const save = () => {
+    if (invalid) return;
+    onChange({ customMinutes: total });
+    toast.success(
+      `Pending tasks will remind ${everyLabel(total).toLowerCase()}`,
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {INTERVALS.map((i) => (
+          <button
+            key={i.value}
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onChange({ interval: i.value, customMinutes: null });
+            }}
+            className={cn(
+              CHOICE,
+              custom === null && !open && s.interval === i.value
+                ? CHOSEN
+                : "hover:bg-muted",
+            )}
+          >
+            {i.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={cn(
+            CHOICE,
+            "col-span-2 sm:col-span-1",
+            custom !== null || open ? CHOSEN : "hover:bg-muted",
+          )}
+        >
+          {custom !== null ? everyLabel(custom) : "Custom"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="space-y-3 rounded-xl border bg-muted/40 p-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+              Hours
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={168}
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+                className="w-20"
+                aria-label="Custom repeat hours"
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+              Minutes
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={59}
+                step={5}
+                value={mins}
+                onChange={(e) => setMins(e.target.value)}
+                className="w-20"
+                aria-label="Custom repeat minutes"
+              />
+            </label>
+            <Button onClick={save} disabled={invalid || unchanged}>
+              {unchanged ? "Saved" : "Save"}
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => pick(m)}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-xs font-medium",
+                  total === m
+                    ? "border-primary bg-accent text-accent-foreground"
+                    : "bg-background hover:bg-muted",
+                )}
+              >
+                {everyLabel(m).replace("Every ", "")}
+              </button>
+            ))}
+          </div>
+          <p
+            className={cn(
+              "text-xs",
+              invalid ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {invalid
+              ? `Choose between ${CUSTOM_MINUTES_MIN} minutes and 7 days.`
+              : `${everyLabel(total)} for every pending task (tasks with their own interval keep it).`}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

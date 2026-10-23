@@ -5,6 +5,7 @@ import { categoriesController } from "./categories-controller";
 import { eventsController } from "./events-controller";
 import { logController } from "./log-controller";
 import { peopleController } from "./people-controller";
+import { pushController } from "./push-controller";
 import { settingsController } from "./settings-controller";
 import { tasksController } from "./tasks-controller";
 
@@ -17,7 +18,8 @@ const userControllers = new Elysia({ name: "user_controllers" })
   .use(tasksController)
   .use(settingsController)
   .use(logController)
-  .use(backupController);
+  .use(backupController)
+  .use(pushController);
 
 export const mainController = new Elysia({
   name: "router",

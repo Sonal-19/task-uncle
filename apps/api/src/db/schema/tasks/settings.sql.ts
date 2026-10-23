@@ -11,6 +11,8 @@ export const userSettingsTable = pgTable("user_settings", (pg) => ({
     .references(() => usersTable.id, { onDelete: "cascade" }),
   notifications: onOffEnum("notifications").notNull().default("on"),
   interval: reminderEveryEnum("interval").notNull().default("1h"),
+  /** Custom repeat in minutes; when set it replaces `interval`. */
+  customMinutes: pg.integer("custom_minutes"),
   /** "HH:mm"; both null = never quiet. */
   quietFrom: pg.text("quiet_from"),
   quietTo: pg.text("quiet_to"),
@@ -18,6 +20,8 @@ export const userSettingsTable = pgTable("user_settings", (pg) => ({
   permissionPromptDismissedAt: pg.timestamp("permission_prompt_dismissed_at", {
     withTimezone: true,
   }),
+  /** IANA zone reported by the user's browser (e.g. "Asia/Kolkata"). */
+  timezone: pg.text(),
   updatedAt: pg
     .timestamp("updated_at", { withTimezone: true })
     .defaultNow()

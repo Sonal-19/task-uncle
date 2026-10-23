@@ -26,3 +26,15 @@ export const SMTP = {
 
 /** OTP accepted for every flow outside production. */
 export const DEV_OTP = "123456";
+
+/** Web Push (VAPID). Without the keys, push is off and reminders only come
+ * from an open app. Generate with `bunx web-push generate-vapid-keys`. */
+export const VAPID = {
+  publicKey: process.env.VAPID_PUBLIC_KEY || "",
+  privateKey: process.env.VAPID_PRIVATE_KEY || "",
+  subject: process.env.VAPID_SUBJECT || "mailto:admin@taskuncle.app",
+};
+
+/** Quiet hours and due times are wall-clock: until a user's browser reports
+ * its timezone, this one is used. */
+export const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || "Asia/Kolkata";

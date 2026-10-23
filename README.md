@@ -33,6 +33,6 @@ Forgot-password code in dev: `123456`. **Settings → Reset demo data** restores
 - Keyboard shortcuts: `N` new task, `?` for the full list
 - JSON backup export / import
 
-## Next
+## Reminders when the app is closed
 
-Web Push so reminders arrive even when the browser is closed.
+The API sends reminders by Web Push (VAPID keys in `apps/api/.env`, generate with `bunx web-push generate-vapid-keys`). Allow notifications in the app (or Settings → "When the app is closed"). With no internet, the open app reminds from what is saved on the device, an installed app in Chrome also checks in the background now and then, and pushes sent while offline arrive when the device reconnects.

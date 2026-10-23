@@ -15,6 +15,7 @@ import {
   useCreateTask,
   useEvents,
   usePeople,
+  useSettings,
   useUpdateTask,
 } from "@/hooks/use-data";
 import { fromAmount, toAmount, todayStr, uid } from "@/lib/format";
@@ -24,6 +25,7 @@ import {
   type Priority,
   STATUSES,
   type Subtask,
+  settingsLabel,
   type TaskReminder,
   type TaskStatus,
 } from "@/lib/types";
@@ -50,6 +52,7 @@ export function TaskSheet() {
   const events = (useEvents().data ?? []).filter((e) => e.status === "active");
   const categories = useCategories().data ?? [];
   const people = usePeople().data ?? [];
+  const settings = useSettings().data;
   const create = useCreateTask();
   const update = useUpdateTask();
   const [f, setF] = useState<Form>(blank());
@@ -267,7 +270,12 @@ export function TaskSheet() {
               value={f.reminder}
               onChange={(v) => set("reminder", v)}
               options={[
-                { value: "inherit", label: "As in settings" },
+                {
+                  value: "inherit",
+                  label: settings
+                    ? `As in settings (${settingsLabel(settings).toLowerCase()})`
+                    : "As in settings",
+                },
                 ...INTERVALS,
                 { value: "off", label: "Don't remind" },
               ]}

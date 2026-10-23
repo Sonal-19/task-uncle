@@ -84,12 +84,14 @@ export const settingsOut = (s: SelectUserSettings | undefined): Settings =>
     ? {
         notifications: s.notifications,
         interval: s.interval,
+        customMinutes: s.customMinutes,
         quietHours:
           s.quietFrom && s.quietTo
             ? { from: s.quietFrom, to: s.quietTo }
             : null,
         overdueBoost: s.overdueBoost,
         permissionPromptDismissedAt: iso(s.permissionPromptDismissedAt),
+        timezone: s.timezone,
       }
     : DEFAULT_SETTINGS;
 

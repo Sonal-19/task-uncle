@@ -10,6 +10,7 @@ export const keys = {
   settings: ["tu", "settings"] as const,
   log: ["tu", "log"] as const,
   me: ["tu", "me"] as const,
+  push: ["tu", "push"] as const,
 };
 
 /** The cached collections, which together make up a `DataState`. */

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import Elysia, { t } from "elysia";
 import { db } from "$/db";
-import { usersTable } from "$/db/schema";
+import { pushSubscriptionsTable, usersTable } from "$/db/schema";
 import { coreAuthService } from "$/lib/services/core-auth-service";
 import { otpService } from "$/lib/services/otp-service";
 import { clientIp, rateLimitService } from "$/lib/services/rate-limit-service";
@@ -98,8 +98,13 @@ export const authController = new Elysia({
     { body: t.Object({ email: tEmail, otp: tOtp, password: tPassword }) },
   )
   .post("/logout", async ({ cookie }) => {
-    if (cookie?.token?.value && typeof cookie.token.value === "string")
+    if (cookie?.token?.value && typeof cookie.token.value === "string") {
+      // This browser stops getting reminders for the account.
+      await db
+        .delete(pushSubscriptionsTable)
+        .where(eq(pushSubscriptionsTable.sessionToken, cookie.token.value));
       await coreAuthService.revokeToken(cookie.token.value);
+    }
     cookie?.token?.remove();
     return ok(null, "Logged out");
   })
