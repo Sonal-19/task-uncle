@@ -77,8 +77,8 @@ export function TaskRow({
   const doneOpacity = useTransform(x, [0, SWIPE], [0, 1]);
   const snoozeOpacity = useTransform(x, [-SWIPE, 0], [1, 0]);
 
-  const ev = eventById.get(task.eventId);
-  const cat = categoryById.get(task.categoryId);
+  const ev = task.eventId ? eventById.get(task.eventId) : undefined;
+  const cat = task.categoryId ? categoryById.get(task.categoryId) : undefined;
   const who = task.assigneeId ? personById.get(task.assigneeId) : undefined;
   const done = task.status === "done";
   const overdue = isOverdue(task);

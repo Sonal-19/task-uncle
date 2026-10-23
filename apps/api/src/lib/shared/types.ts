@@ -61,8 +61,10 @@ export type Subtask = { id: string; title: string; doneAt: string | null };
 
 export type Task = {
   id: string;
-  eventId: string;
-  categoryId: string;
+  /** Optional. With a category it is always the category's event. */
+  eventId: string | null;
+  /** Optional; a task can sit in an event without a category. */
+  categoryId: string | null;
   title: string;
   notes: string;
   status: TaskStatus;
@@ -206,4 +208,34 @@ export function newId(): string {
   b[8] = (b[8]! & 0x3f) | 0x80;
   const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+type Place = { eventId: string | null; categoryId: string | null };
+
+/**
+ * Where a task lives after a change. Both are optional; a category decides
+ * the event, and moving a task to another event (without naming a category)
+ * drops the category of the old one. `eventOf` gives a category's event
+ * (undefined when unknown).
+ */
+export function placeTask(
+  current: Place,
+  patch: { eventId?: string | null; categoryId?: string | null },
+  eventOf: (categoryId: string) => string | undefined,
+): Place {
+  let categoryId =
+    patch.categoryId !== undefined ? patch.categoryId : current.categoryId;
+  let eventId = patch.eventId !== undefined ? patch.eventId : current.eventId;
+  if (categoryId) {
+    const ev = eventOf(categoryId);
+    if (
+      patch.categoryId === undefined &&
+      patch.eventId !== undefined &&
+      ev !== undefined &&
+      ev !== patch.eventId
+    )
+      categoryId = null;
+    else if (ev !== undefined) eventId = ev;
+  }
+  return { eventId, categoryId };
 }

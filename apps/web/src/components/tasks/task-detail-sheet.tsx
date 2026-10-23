@@ -72,8 +72,8 @@ export function TaskDetailSheet() {
       </ResponsiveSheet>
     );
 
-  const ev = eventById.get(task.eventId);
-  const cat = categoryById.get(task.categoryId);
+  const ev = task.eventId ? eventById.get(task.eventId) : undefined;
+  const cat = task.categoryId ? categoryById.get(task.categoryId) : undefined;
   const who = task.assigneeId ? personById.get(task.assigneeId) : undefined;
   const done = task.status === "done";
   const overdue = isOverdue(task);
@@ -126,6 +126,22 @@ export function TaskDetailSheet() {
               <p className="truncate font-medium">{cat.name}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {ev.name}
+              </p>
+            </div>
+          </Link>
+        )}
+        {ev && !cat && (
+          <Link
+            to="/events/$eventId"
+            params={{ eventId: ev.id }}
+            onClick={close}
+            className="flex items-center gap-3 rounded-xl border p-3 hover:bg-muted"
+          >
+            <IconTile icon={ev.icon} color={ev.color} />
+            <div className="min-w-0">
+              <p className="truncate font-medium">{ev.name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                No category
               </p>
             </div>
           </Link>

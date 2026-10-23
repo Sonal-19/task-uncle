@@ -15,14 +15,14 @@ export const tasksTable = pgTable(
       .integer("user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
-    /** Always the category's event (moved with it). */
+    /** Optional; with a category it is always the category's event (moved
+     * with it). Deleting the event deletes its tasks. */
     eventId: pg
       .uuid("event_id")
-      .notNull()
       .references(() => eventsTable.id, { onDelete: "cascade" }),
+    /** Optional. Deleting the category deletes its tasks. */
     categoryId: pg
       .uuid("category_id")
-      .notNull()
       .references(() => categoriesTable.id, { onDelete: "cascade" }),
     title: pg.text().notNull(),
     notes: pg.text().notNull().default(""),
@@ -54,8 +54,10 @@ export const tasksTable = pgTable(
   }),
   (t) => [
     index("tasks_user_idx").on(t.userId),
-    index("tasks_event_idx").on(t.eventId),
-    index("tasks_category_idx").on(t.categoryId),
+    index("tasks_event_idx").on(t.eventId).where(sql`${t.eventId} is not null`),
+    index("tasks_category_idx")
+      .on(t.categoryId)
+      .where(sql`${t.categoryId} is not null`),
     index("tasks_assignee_idx")
       .on(t.assigneeId)
       .where(sql`${t.assigneeId} is not null`),

@@ -123,7 +123,9 @@ function CalendarPage() {
                                 ? "var(--done)"
                                 : late
                                   ? "var(--overdue)"
-                                  : eventById.get(t.eventId)?.color,
+                                  : t.eventId
+                                    ? eventById.get(t.eventId)?.color
+                                    : "var(--muted-foreground)",
                           }}
                         />
                       ))}

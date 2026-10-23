@@ -13,7 +13,7 @@ export const PORT = Number(process.env.PORT ?? (IS_PROD ? 4600 : 4500));
 export const SESSION_DAYS = Number(process.env.SESSION_DAYS ?? 30);
 
 export const ALLOWED_ORIGIN_HOSTS = (
-  process.env.ALLOWED_ORIGINS || "https://task-uncle.com.u4.lol"
+  process.env.ALLOWED_ORIGINS || "https://tu.u4.lol"
 ).split(",");
 
 export const SMTP = {

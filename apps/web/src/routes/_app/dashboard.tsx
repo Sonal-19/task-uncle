@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowRight,
+  BookOpenCheck,
   CalendarClock,
   CheckCircle2,
   Hourglass,
@@ -152,7 +153,7 @@ function Dashboard() {
               tasks={today}
               empty={
                 <EmptyState
-                  icon={<Sparkles className="size-6" />}
+                  icon={<BookOpenCheck className="size-6" />}
                   title="Nothing else due today"
                 >
                   Enjoy the chai ☕ — or add something.

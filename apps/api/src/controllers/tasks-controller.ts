@@ -2,9 +2,10 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import Elysia, { t } from "elysia";
 import { db } from "$/db";
 import { tasksTable } from "$/db/schema";
-import { ownedCategory, ownsPerson } from "$/lib/services/ownership";
+import { ownedCategory, ownsEvent, ownsPerson } from "$/lib/services/ownership";
 import { taskOut } from "$/lib/services/serialize";
 import {
+  placeTask,
   priorities,
   statusPatch,
   taskReminders,
@@ -31,7 +32,8 @@ const tSubtask = t.Object({
 });
 
 const taskBody = t.Object({
-  categoryId: tUuid,
+  /** Optional; null = no category. */
+  categoryId: t.Nullable(tUuid),
   title: t.String({ minLength: 1, maxLength: 300 }),
   notes: t.String({ maxLength: 5000 }),
   priority: tEnum(priorities),
@@ -45,8 +47,8 @@ const taskBody = t.Object({
 });
 
 const extra = {
-  /** Sent by the web for its own copy; the API takes it from the category. */
-  eventId: t.Optional(tUuid),
+  /** Optional; with a category, the API takes it from the category. */
+  eventId: t.Optional(t.Nullable(tUuid)),
   status: t.Optional(tEnum(taskStatuses)),
 };
 
@@ -67,6 +69,30 @@ async function assignee(userId: number, id: string | null | undefined) {
 
 const toDate = (s: string | null) => (s ? new Date(s) : null);
 
+/** The event and category a task ends up in (`placeTask`), with the ids
+ * checked against the user. A string is the reason it can't. */
+async function resolvePlace(
+  userId: number,
+  current: { eventId: string | null; categoryId: string | null },
+  patch: { eventId?: string | null; categoryId?: string | null },
+) {
+  const candidate =
+    patch.categoryId !== undefined ? patch.categoryId : current.categoryId;
+  const cat = candidate ? await ownedCategory(userId, candidate) : undefined;
+  if (candidate && !cat && patch.categoryId)
+    return "That category no longer exists";
+  const place = placeTask(current, patch, (id) =>
+    cat && cat.id === id ? cat.eventId : undefined,
+  );
+  if (place.categoryId && !cat) place.categoryId = null;
+  // Only an event named without a category needs checking.
+  if (place.eventId && !(cat && place.categoryId === cat.id)) {
+    if (!(await ownsEvent(userId, place.eventId)))
+      return "That event no longer exists";
+  }
+  return place;
+}
+
 export const tasksController = new Elysia({
   name: "tasks_controller",
   prefix: "/tasks",
@@ -83,8 +109,12 @@ export const tasksController = new Elysia({
   .post(
     "/",
     async ({ user, body, status }) => {
-      const cat = await ownedCategory(user.id, body.categoryId);
-      if (!cat) return status(400, fail("That category no longer exists"));
+      const place = await resolvePlace(
+        user.id,
+        { eventId: null, categoryId: null },
+        body,
+      );
+      if (typeof place === "string") return status(400, fail(place));
       const { id, status: st, eventId: _e, editedAt, ...rest } = body;
       const at = editTime(editedAt).toISOString();
       const s = statusPatch(
@@ -98,7 +128,7 @@ export const tasksController = new Elysia({
           ...rest,
           id,
           userId: user.id,
-          eventId: cat.eventId,
+          ...place,
           title: rest.title.trim(),
           dueTime: rest.dueDate ? rest.dueTime : null,
           assigneeId: await assignee(user.id, rest.assigneeId),
@@ -130,17 +160,16 @@ export const tasksController = new Elysia({
         baseUpdatedAt: _b,
         editedAt,
         eventId: _e,
+        categoryId: _c,
         status: st,
         snoozedUntil,
         assigneeId,
         ...rest
       } = body;
-      let eventId: string | undefined;
-      if (rest.categoryId && rest.categoryId !== task.categoryId) {
-        const cat = await ownedCategory(user.id, rest.categoryId);
-        if (!cat) return status(400, fail("That category no longer exists"));
-        eventId = cat.eventId;
-      }
+      const moving =
+        body.categoryId !== undefined || body.eventId !== undefined;
+      const place = moving ? await resolvePlace(user.id, task, body) : null;
+      if (typeof place === "string") return status(400, fail(place));
       const s = st
         ? statusPatch(
             {
@@ -157,7 +186,7 @@ export const tasksController = new Elysia({
         .set({
           ...rest,
           ...(rest.title && { title: rest.title.trim() }),
-          ...(eventId && { eventId }),
+          ...place,
           ...(!dueDate && { dueTime: null }),
           ...(assigneeId !== undefined && {
             assigneeId: await assignee(user.id, assigneeId),

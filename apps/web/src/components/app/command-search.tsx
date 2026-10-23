@@ -129,7 +129,9 @@ export function CommandSearch() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{t.title}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {eventById.get(t.eventId)?.name} · {formatDue(t)}
+                    {[t.eventId && eventById.get(t.eventId)?.name, formatDue(t)]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 </div>
                 <StatusBadge status={isOverdue(t) ? "overdue" : t.status} />

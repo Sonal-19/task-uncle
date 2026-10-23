@@ -80,7 +80,10 @@ class ReminderService {
       rows.map(taskOut),
       settings,
       (t) =>
-        [names.get(t.eventId), names.get(t.categoryId)]
+        [
+          t.eventId && names.get(t.eventId),
+          t.categoryId && names.get(t.categoryId),
+        ]
           .filter(Boolean)
           .join(" · "),
       now,

@@ -152,9 +152,12 @@ export async function replaceAll(userId: number, input: unknown) {
   });
   const eventOfCategory = new Map(categories.map((c) => [c.id, c.eventId]));
   const tasks = arr(data.tasks).flatMap((t) => {
+    // Both optional: a category decides the event; a link to something
+    // that isn't in the file is dropped.
     const categoryId = known(t.categoryId);
-    const eventId = categoryId && eventOfCategory.get(categoryId);
-    if (!categoryId || !eventId) return [];
+    const eventId = categoryId
+      ? (eventOfCategory.get(categoryId) ?? null)
+      : known(t.eventId);
     const subtasks: Subtask[] = arr(t.subtasks).map((s) => ({
       id: str(s.id) || newId(),
       title: str(s.title),

@@ -219,7 +219,8 @@ export function planReminders(
   const entries: ReminderEntry[] = due.slice(0, MAX_SINGLE).map((t) => ({
     taskId: t.id,
     title: `${overdue(t) ? "Overdue" : "Pending"}: ${t.title}`,
-    body: label(t),
+    // A task in no event has no "Event · Category" line.
+    body: label(t) || "Tap to open it in Task Uncle",
     sentAt,
   }));
   if (due.length > MAX_SINGLE) {

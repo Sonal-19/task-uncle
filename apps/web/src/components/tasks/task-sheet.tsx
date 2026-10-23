@@ -65,8 +65,8 @@ export function TaskSheet() {
     if (editing) {
       setF({
         title: editing.title,
-        eventId: editing.eventId,
-        categoryId: editing.categoryId,
+        eventId: editing.eventId ?? "",
+        categoryId: editing.categoryId ?? "",
         status: editing.status,
         priority: editing.priority,
         dueDate: editing.dueDate ?? "",
@@ -78,14 +78,11 @@ export function TaskSheet() {
         subtasks: editing.subtasks,
       });
     } else {
-      const eventId = defaults.eventId ?? events[0]?.id ?? "";
+      // Both optional: pre-filled only from the page it was opened on.
       setF({
         ...blank(),
-        eventId,
-        categoryId:
-          defaults.categoryId ??
-          categories.find((c) => c.eventId === eventId)?.id ??
-          "",
+        eventId: defaults.eventId ?? "",
+        categoryId: defaults.categoryId ?? "",
         assigneeId: defaults.assigneeId ?? "",
         dueDate: defaults.dueDate ?? todayStr(),
       });
@@ -112,8 +109,8 @@ export function TaskSheet() {
     e.preventDefault();
     const body: TaskInput = {
       title: f.title.trim(),
-      eventId: f.eventId,
-      categoryId: f.categoryId,
+      eventId: f.eventId || null,
+      categoryId: f.categoryId || null,
       status: f.status,
       priority: f.priority,
       dueDate: f.dueDate || null,
@@ -132,7 +129,6 @@ export function TaskSheet() {
   }
 
   const busy = create.isPending || update.isPending;
-  const noEvents = !events.length;
 
   return (
     <ResponsiveSheet
@@ -143,11 +139,7 @@ export function TaskSheet() {
         editing ? undefined : "Uncle will keep reminding you until it's done."
       }
     >
-      {noEvents ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">
-          Create an event first (e.g. a project), then add tasks to it.
-        </p>
-      ) : (
+      {
         <form onSubmit={submit} className="space-y-4">
           <Field label="What needs to be done?" htmlFor="t-title" required>
             <Input
@@ -161,32 +153,37 @@ export function TaskSheet() {
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Event" htmlFor="t-event" required>
+            <Field label="Event" htmlFor="t-event">
               <SelectField
                 id="t-event"
-                required
-                placeholder="Choose event"
+                placeholder="No event"
                 value={f.eventId}
-                options={events.map((ev) => ({ value: ev.id, label: ev.name }))}
+                options={[
+                  { value: "", label: "No event" },
+                  ...events.map((ev) => ({ value: ev.id, label: ev.name })),
+                ]}
                 onChange={(eventId) =>
-                  setF((p) => ({
-                    ...p,
-                    eventId,
-                    categoryId:
-                      categories.find((c) => c.eventId === eventId)?.id ?? "",
-                  }))
+                  // A category belongs to one event: changing the event clears it.
+                  setF((p) => ({ ...p, eventId, categoryId: "" }))
                 }
               />
             </Field>
-            <Field label="Category" htmlFor="t-cat" required>
+            <Field label="Category" htmlFor="t-cat">
               <SelectField
                 id="t-cat"
-                required
+                disabled={!f.eventId}
                 placeholder={
-                  eventCats.length ? "Choose category" : "No categories"
+                  !f.eventId
+                    ? "Pick an event first"
+                    : eventCats.length
+                      ? "No category"
+                      : "No categories yet"
                 }
                 value={f.categoryId}
-                options={eventCats.map((c) => ({ value: c.id, label: c.name }))}
+                options={[
+                  { value: "", label: "No category" },
+                  ...eventCats.map((c) => ({ value: c.id, label: c.name })),
+                ]}
                 onChange={(v) => set("categoryId", v)}
               />
             </Field>
@@ -353,13 +350,13 @@ export function TaskSheet() {
             <Button
               type="submit"
               className="flex-1"
-              disabled={busy || !f.title.trim() || !f.categoryId}
+              disabled={busy || !f.title.trim()}
             >
               {editing ? "Save" : "Add task"}
             </Button>
           </div>
         </form>
-      )}
+      }
     </ResponsiveSheet>
   );
 }

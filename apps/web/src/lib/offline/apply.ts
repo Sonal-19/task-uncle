@@ -1,4 +1,4 @@
-import { type DataState, kindOf, statusPatch } from "@/lib/types";
+import { type DataState, kindOf, placeTask, statusPatch } from "@/lib/types";
 import type { OpData } from "./outbox";
 
 /** Whatever part of the data is in the query cache right now. */
@@ -121,11 +121,16 @@ export function applyOp(
               ...(status ? statusPatch(t, status, op.at) : {}),
             };
             if (!next.dueDate) next.dueTime = null;
-            // Moved to a category in another event.
-            if (rest.categoryId && !rest.eventId) {
-              const cat = categories?.find((c) => c.id === rest.categoryId);
-              if (cat) next.eventId = cat.eventId;
-            }
+            // Same rule as the API: a category decides the event.
+            if (rest.categoryId !== undefined || rest.eventId !== undefined)
+              Object.assign(
+                next,
+                placeTask(
+                  t,
+                  rest,
+                  (id) => categories?.find((c) => c.id === id)?.eventId,
+                ),
+              );
             return next;
           }),
       };

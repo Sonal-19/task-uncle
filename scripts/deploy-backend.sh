@@ -32,6 +32,6 @@ ssh "$REMOTE" bash <<REMOTE_EOF
   curl -fsS http://127.0.0.1:$PORT/health && echo
 REMOTE_EOF
 
-log "✅ Backend deployed: https://task-uncle.com/api/"
+log "✅ Backend deployed: https://tu.u4.lol/api/"
 echo "  Logs:   ssh $REMOTE 'tail -f $REMOTE_DIR/server.log'"
 echo "  Attach: ssh $REMOTE -t 'tmux attach -t $SESSION'"
