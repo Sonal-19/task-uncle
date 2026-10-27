@@ -20,6 +20,8 @@ export type NotifyOptions = {
   /** Same tag replaces the previous notification instead of stacking. */
   tag: string;
   taskId?: string;
+  /** Daily task: the day "Mark done" ticks off. */
+  day?: string | null;
   requireInteraction?: boolean;
 };
 
@@ -35,7 +37,7 @@ export async function showNotification(o: NotifyOptions) {
     badge: "/pwa-192.png",
     renotify: true,
     requireInteraction: o.requireInteraction,
-    data: { taskId: o.taskId ?? null },
+    data: { taskId: o.taskId ?? null, day: o.day ?? null },
     actions: o.taskId
       ? [
           { action: "done", title: "✓ Mark done" },

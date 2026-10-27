@@ -41,10 +41,12 @@ const windows = () =>
   self.clients.matchAll({ type: "window", includeUncontrolled: true });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Draws a reminder. Task reminders carry Mark done / Snooze buttons. */
 function show(p: PushPayload) {
   const taskId = p.taskId && UUID.test(p.taskId) ? p.taskId : null;
+  const day = p.day && DAY.test(p.day) ? p.day : null;
   return self.registration.showNotification(p.title, {
     body: p.body,
     tag: p.tag,
@@ -52,7 +54,7 @@ function show(p: PushPayload) {
     badge: "/pwa-192.png",
     renotify: true,
     requireInteraction: !!taskId,
-    data: { taskId },
+    data: { taskId, day },
     actions: taskId
       ? [
           { action: "done", title: "✓ Mark done" },
@@ -87,11 +89,14 @@ self.addEventListener("push", (event) => {
 });
 
 /** Applies Mark done / Snooze straight through the API (the session cookie
- * goes with it), for when no tab is open. */
-async function applyDirect(taskId: string, action: string) {
+ * goes with it), for when no tab is open. A daily task's "done" ticks off
+ * the reminder's day instead of closing the task. */
+async function applyDirect(taskId: string, action: string, day: string | null) {
   const body =
     action === "done"
-      ? { status: "done" }
+      ? day
+        ? { tickDay: { date: day, done: "on" } }
+        : { status: "done" }
       : { snoozedUntil: new Date(Date.now() + 3_600_000).toISOString() };
   try {
     const res = await fetch(`/api/tasks/${taskId}`, {
@@ -114,8 +119,10 @@ async function applyDirect(taskId: string, action: string) {
  */
 self.addEventListener("notificationclick", (event) => {
   const n = event.notification;
-  const raw = (n.data as { taskId?: string | null } | null)?.taskId ?? null;
+  const data = n.data as { taskId?: string | null; day?: string | null } | null;
+  const raw = data?.taskId ?? null;
   const taskId = raw && UUID.test(raw) ? raw : null;
+  const day = data?.day && DAY.test(data.day) ? data.day : null;
   const action = event.action || "";
   n.close();
 
@@ -123,14 +130,15 @@ self.addEventListener("notificationclick", (event) => {
     (async () => {
       const win = (await windows())[0] as WindowClient | undefined;
       if (win) {
-        if (taskId) win.postMessage({ type: "task-action", taskId, action });
+        if (taskId)
+          win.postMessage({ type: "task-action", taskId, action, day });
         if (!action) await win.focus();
         if (!taskId && !action) await win.navigate("/dashboard");
         return;
       }
-      if (taskId && action && (await applyDirect(taskId, action))) return;
+      if (taskId && action && (await applyDirect(taskId, action, day))) return;
       const url = taskId
-        ? `/tasks?task=${taskId}${action ? `&action=${action}` : ""}`
+        ? `/tasks?task=${taskId}${action ? `&action=${action}` : ""}${day ? `&day=${day}` : ""}`
         : "/dashboard";
       await self.clients.openWindow(url);
     })(),

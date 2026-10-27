@@ -3,7 +3,12 @@ import { index, pgTable } from "drizzle-orm/pg-core";
 import type { Subtask } from "$/lib/shared/types";
 import { usersTable } from "../users/users.sql";
 import { categoriesTable } from "./categories.sql";
-import { priorityEnum, taskReminderEnum, taskStatusEnum } from "./enums.sql";
+import {
+  priorityEnum,
+  taskReminderEnum,
+  taskRepeatEnum,
+  taskStatusEnum,
+} from "./enums.sql";
 import { eventsTable } from "./events.sql";
 import { peopleTable } from "./people.sql";
 
@@ -40,6 +45,12 @@ export const tasksTable = pgTable(
     reminder: taskReminderEnum("reminder").notNull().default("inherit"),
     /** Minutes between reminders when `reminder` = custom. */
     reminderMinutes: pg.integer("reminder_minutes"),
+    /** daily = reminds once a day at `repeatTime`, ticked off per day. */
+    repeat: taskRepeatEnum("repeat").notNull().default("off"),
+    /** "HH:mm", with repeat = daily. */
+    repeatTime: pg.text("repeat_time"),
+    /** `yyyy-MM-dd` days a daily task was done. */
+    doneDates: pg.jsonb("done_dates").$type<string[]>().notNull().default([]),
     snoozedUntil: pg.timestamp("snoozed_until", { withTimezone: true }),
     lastRemindedAt: pg.timestamp("last_reminded_at", { withTimezone: true }),
     startedAt: pg.timestamp("started_at", { withTimezone: true }),

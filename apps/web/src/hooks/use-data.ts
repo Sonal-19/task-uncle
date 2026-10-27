@@ -2,11 +2,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { queryClient as qc } from "@/integrations/tanstack-query/root-provider";
 import { fetchers } from "@/lib/fetchers";
+import { shortDate } from "@/lib/format";
 import type { TaskPatch } from "@/lib/offline/outbox";
 import { baseOf, queue } from "@/lib/offline/sync";
 import { keys } from "@/lib/query-keys";
 import {
   type Category,
+  checkDay,
   kindOf,
   type NotificationLog,
   newId,
@@ -43,6 +45,8 @@ export type TaskInput = Pick<
   | "subtasks"
   | "reminder"
   | "reminderMinutes"
+  | "repeat"
+  | "repeatTime"
 > & { status?: TaskStatus };
 
 export const useEvents = () =>
@@ -195,6 +199,7 @@ export function createTask(v: TaskInput): Task {
     ...rest,
     id: newId(),
     status: "pending",
+    doneDates: [],
     snoozedUntil: null,
     lastRemindedAt: null,
     createdAt: at,
@@ -226,6 +231,35 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 
 export const setTaskStatus = (id: string, status: TaskStatus) =>
   updateTask(id, { status }, STATUS_LABEL[status]);
+/** Ticks (or unticks) one day of a daily task. Sent as the whole list, like
+ * the checklist, so a replay can't flip it back. */
+export function setTaskDay(id: string, date: string, done: boolean) {
+  const task = cached<Task>(keys.tasks, id);
+  if (!task) return;
+  updateTask(
+    id,
+    { doneDates: checkDay(task.doneDates, date, done) },
+    `${done ? "Done" : "Not done"} for ${shortDate(date)}`,
+  );
+  return task;
+}
+
+/** Day check with an Undo toast. */
+export function useSetTaskDay() {
+  return useMutation({
+    mutationFn: async (v: { id: string; date: string; done: boolean }) =>
+      setTaskDay(v.id, v.date, v.done),
+    onSuccess: (task, { id, date, done }) => {
+      if (done)
+        toast.success(`Done for ${shortDate(date)}`, {
+          description: task?.title,
+          action: { label: "Undo", onClick: () => setTaskDay(id, date, false) },
+        });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+}
+
 export const snoozeTask = (id: string, until: string | null) =>
   updateTask(id, { snoozedUntil: until }, until ? "Snooze" : "Unsnooze");
 

@@ -4,21 +4,37 @@ import {
   BellOff,
   Check,
   Clock,
+  Flame,
   IndianRupee,
   ListChecks,
+  Repeat,
 } from "lucide-react";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import type * as React from "react";
 import { toast } from "sonner";
 import { Avatar, PriorityFlag } from "@/components/common/badges";
-import { useLookups, useSetTaskStatus, useSnoozeTask } from "@/hooks/use-data";
+import {
+  useLookups,
+  useSetTaskDay,
+  useSetTaskStatus,
+  useSnoozeTask,
+} from "@/hooks/use-data";
 import { useIsTouch } from "@/hooks/use-media-query";
-import { formatAmount, formatDue, isOverdue, timeAgo } from "@/lib/format";
-import type { Task } from "@/lib/types";
+import {
+  doneToday,
+  formatAmount,
+  formatDue,
+  isOverdue,
+  streakOf,
+  timeAgo,
+  todayStr,
+} from "@/lib/format";
+import { isDaily, type Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSheets } from "@/stores/sheet-store";
 
-/** Round check that marks a task done (or reopens it). */
+/** Round check that marks a task done (or reopens it). A daily task's
+ * check ticks off today only; the task stays and comes back tomorrow. */
 export function TaskCheck({
   task,
   className,
@@ -27,18 +43,31 @@ export function TaskCheck({
   className?: string;
 }) {
   const setStatus = useSetTaskStatus();
-  const done = task.status === "done";
+  const setDay = useSetTaskDay();
+  const daily = isDaily(task) && task.status !== "done";
+  const done = daily ? doneToday(task) : task.status === "done";
   return (
     <button
       type="button"
-      aria-label={done ? "Mark as pending" : "Mark as done"}
+      aria-label={
+        daily
+          ? done
+            ? "Mark today as not done"
+            : "Mark today as done"
+          : done
+            ? "Mark as pending"
+            : "Mark as done"
+      }
       onClick={(e) => {
         e.stopPropagation();
-        setStatus.mutate({
-          id: task.id,
-          status: done ? "pending" : "done",
-          prev: task.status,
-        });
+        if (daily)
+          setDay.mutate({ id: task.id, date: todayStr(), done: !done });
+        else
+          setStatus.mutate({
+            id: task.id,
+            status: done ? "pending" : "done",
+            prev: task.status,
+          });
       }}
       className={cn(
         "grid size-6 shrink-0 place-items-center rounded-full border-2 transition-all active:scale-90",
@@ -71,6 +100,7 @@ export function TaskRow({
   const { eventById, categoryById, personById } = useLookups();
   const showTask = useSheets((s) => s.showTask);
   const setStatus = useSetTaskStatus();
+  const setDay = useSetTaskDay();
   const snooze = useSnoozeTask();
   const isTouch = useIsTouch();
   const x = useMotionValue(0);
@@ -81,6 +111,9 @@ export function TaskRow({
   const cat = task.categoryId ? categoryById.get(task.categoryId) : undefined;
   const who = task.assigneeId ? personById.get(task.assigneeId) : undefined;
   const done = task.status === "done";
+  const daily = isDaily(task) && !done;
+  const today = daily && doneToday(task);
+  const streak = daily ? streakOf(task) : 0;
   const overdue = isOverdue(task);
   const snoozed =
     !done && task.snoozedUntil && Date.parse(task.snoozedUntil) > Date.now();
@@ -88,7 +121,9 @@ export function TaskRow({
 
   function onDragEnd() {
     const dx = x.get();
-    if (dx > SWIPE && !done) {
+    if (dx > SWIPE && daily) {
+      if (!today) setDay.mutate({ id: task.id, date: todayStr(), done: true });
+    } else if (dx > SWIPE && !done) {
       setStatus.mutate({ id: task.id, status: "done", prev: task.status });
     } else if (dx < -SWIPE && !done) {
       snooze.mutate({
@@ -142,7 +177,8 @@ export function TaskRow({
             <p
               className={cn(
                 "min-w-0 font-medium leading-snug",
-                done && "text-muted-foreground line-through decoration-1",
+                (done || today) &&
+                  "text-muted-foreground line-through decoration-1",
               )}
             >
               {task.title}
@@ -166,7 +202,25 @@ export function TaskRow({
               </span>
             )}
             {!showEvent && cat && <span className="truncate">{cat.name}</span>}
-            {done && task.completedAt ? (
+            {daily ? (
+              <span
+                className={cn(
+                  "flex items-center gap-1",
+                  today && "font-medium text-done",
+                )}
+              >
+                {today ? (
+                  <>
+                    <Check className="size-3.5" /> Done today
+                  </>
+                ) : (
+                  <>
+                    <Repeat className="size-3.5" />
+                    {formatDue(task)}
+                  </>
+                )}
+              </span>
+            ) : done && task.completedAt ? (
               <span className="flex items-center gap-1 text-done">
                 <Check className="size-3.5" /> Done {timeAgo(task.completedAt)}
               </span>
@@ -179,6 +233,12 @@ export function TaskRow({
               >
                 <Clock className="size-3.5" />
                 {formatDue(task)}
+              </span>
+            )}
+            {streak > 1 && (
+              <span className="flex items-center gap-0.5 font-semibold text-orange-500">
+                <Flame className="size-3.5" />
+                {streak} days
               </span>
             )}
             {task.status === "in_progress" && (
@@ -206,7 +266,7 @@ export function TaskRow({
                 <AlarmClockOff className="size-3.5" /> Snoozed
               </span>
             )}
-            {task.reminder === "off" && !done && (
+            {task.reminder === "off" && !done && !daily && (
               <BellOff className="size-3.5" aria-label="Reminders off" />
             )}
           </div>

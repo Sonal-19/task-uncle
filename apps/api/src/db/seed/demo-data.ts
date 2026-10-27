@@ -147,6 +147,9 @@ export function buildSeed(now = new Date()): DataState {
     subtasks: [],
     reminder: "inherit",
     reminderMinutes: null,
+    repeat: "off",
+    repeatTime: null,
+    doneDates: [],
     snoozedUntil: null,
     lastRemindedAt: null,
     createdAt: created,
@@ -290,6 +293,14 @@ export function buildSeed(now = new Date()): DataState {
       dueDate: day(2),
     }),
     task("t26", "c-shop", "Buy groceries", { priority: "low", ...done(4) }),
+    // Daily: reminds at 11 AM every day, ticked off day by day.
+    task("t27", "c-home", "Solve one LeetCode problem", {
+      dueDate: null,
+      repeat: "daily",
+      repeatTime: "11:00",
+      doneDates: [day(-4), day(-3), day(-1)],
+      notes: "One problem a day keeps the interviewer away.",
+    }),
   ];
 
   const log: NotificationLog[] = [

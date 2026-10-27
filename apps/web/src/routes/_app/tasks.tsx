@@ -27,6 +27,8 @@ type TasksSearch = {
   view?: TaskView;
   task?: string;
   action?: "done" | "snooze";
+  /** Daily task: the day a notification's "Mark done" ticks off. */
+  day?: string;
 };
 
 export const Route = createFileRoute("/_app/tasks")({
@@ -34,6 +36,10 @@ export const Route = createFileRoute("/_app/tasks")({
     view: VIEWS.includes(s.view as TaskView) ? (s.view as TaskView) : undefined,
     task: typeof s.task === "string" ? s.task : undefined,
     action: s.action === "done" || s.action === "snooze" ? s.action : undefined,
+    day:
+      typeof s.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.day)
+        ? s.day
+        : undefined,
   }),
   component: TasksPage,
 });
@@ -55,10 +61,15 @@ function TasksPage() {
   useEffect(() => {
     if (!search.task || tasksQ.isLoading) return;
     const id = search.task;
-    if (search.action) applyTaskAction(id, search.action);
+    if (search.action) applyTaskAction(id, search.action, search.day);
     else showTask(id);
     navigate({
-      search: (s) => ({ ...s, task: undefined, action: undefined }),
+      search: (s) => ({
+        ...s,
+        task: undefined,
+        action: undefined,
+        day: undefined,
+      }),
       replace: true,
     });
   }, [search.task, search.action, tasksQ.isLoading]);

@@ -9,6 +9,7 @@
 import {
   CUSTOM_MINUTES_MIN,
   INTERVAL_MS,
+  isDaily,
   type Priority,
   type Settings,
   type Task,
@@ -83,6 +84,20 @@ export function zonedInstant(ymd: string, hhmm: string, tz: string) {
   return asUtc - offset(first);
 }
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** The `yyyy-MM-dd` a clock in `tz` shows at `at`. */
+export function dayIn(at: number, tz: string) {
+  const w = wall(at, tz);
+  return `${w.y}-${pad(w.m)}-${pad(w.d)}`;
+}
+
+/** `ymd` moved by `n` calendar days. */
+export function addDay(ymd: string, n = 1) {
+  const [y = 1970, m = 1, d = 1] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 /** Past its due date and time (end of the day when there is no time). */
 export function isOverdueAt(
   t: Pick<Task, "status" | "dueDate" | "dueTime">,
@@ -140,6 +155,39 @@ export function intervalFor(t: Task, settings: Settings, now = new Date()) {
     : ms;
 }
 
+/* ---------------------------- daily tasks ---------------------------- */
+
+/** When `day`'s reminder of a daily task goes off: its time, or the end of
+ * a snooze taken after that. */
+function dailyTrigger(t: Task, day: string, tz: string) {
+  const slot = zonedInstant(day, t.repeatTime ?? "00:00", tz);
+  const snooze = t.snoozedUntil ? Date.parse(t.snoozedUntil) : 0;
+  return snooze > slot ? snooze : slot;
+}
+
+/**
+ * A daily task reminds once a day at its own time (quiet hours don't apply:
+ * the user picked that time), unless that day is already ticked off. A
+ * reminder missed while nothing was running goes out late, once. A task
+ * made after today's time starts tomorrow.
+ */
+function dailyDue(t: Task, settings: Settings, now: Date) {
+  const tz = zoneOf(settings);
+  const t0 = now.getTime();
+  const day = dayIn(t0, tz);
+  if (t.doneDates.includes(day)) return false;
+  const at = dailyTrigger(t, day, tz);
+  const last = Date.parse(t.lastRemindedAt ?? t.createdAt);
+  return t0 >= at && last < at;
+}
+
+/** The day a daily task's reminder at `now` is about (for "Mark done"). */
+export const reminderDay = (
+  t: Task,
+  settings: Pick<Settings, "timezone">,
+  now = new Date(),
+) => (isDaily(t) ? dayIn(now.getTime(), zoneOf(settings)) : null);
+
 /**
  * Pending tasks whose reminder is due now. A task keeps coming back every
  * interval until it is marked done; snoozing pushes it to `snoozedUntil`.
@@ -149,12 +197,14 @@ export function dueReminders(
   settings: Settings,
   now = new Date(),
 ) {
-  if (settings.notifications === "off" || inQuietHours(settings, now))
-    return [];
+  if (settings.notifications === "off") return [];
+  const quiet = inQuietHours(settings, now);
   const t0 = now.getTime();
   return tasks.filter((t) => {
     if (t.status === "done") return false;
     if (t.snoozedUntil && Date.parse(t.snoozedUntil) > t0) return false;
+    if (isDaily(t)) return dailyDue(t, settings, now);
+    if (quiet) return false;
     const every = intervalFor(t, settings, now);
     if (every === null) return false;
     // A task never reminded counts from when it was created.
@@ -179,6 +229,17 @@ function afterQuiet(settings: Settings, at: Date) {
 /** When this task will remind next (for the detail sheet). */
 export function nextReminderAt(t: Task, settings: Settings, now = new Date()) {
   if (t.status === "done" || settings.notifications === "off") return null;
+  if (isDaily(t)) {
+    const tz = zoneOf(settings);
+    const t0 = now.getTime();
+    const today = dayIn(t0, tz);
+    const last = Date.parse(t.lastRemindedAt ?? t.createdAt);
+    let at = dailyTrigger(t, today, tz);
+    // Today's is done or already sent: tomorrow's.
+    if (t.doneDates.includes(today) || last >= at)
+      at = zonedInstant(addDay(today), t.repeatTime ?? "00:00", tz);
+    return new Date(Math.max(at, t0 + 60_000));
+  }
   const every = intervalFor(t, settings, now);
   if (every === null) return null;
   const last = Date.parse(t.lastRemindedAt ?? t.createdAt);
@@ -204,6 +265,8 @@ const PRIORITY_ORDER: Record<Priority, number> = {
 
 export type ReminderEntry = {
   taskId: string | null;
+  /** For a daily task: the day this reminder is about. */
+  day: string | null;
   title: string;
   body: string;
   sentAt: string;
@@ -228,17 +291,28 @@ export function planReminders(
       PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
   );
   const sentAt = now.toISOString();
-  const entries: ReminderEntry[] = due.slice(0, MAX_SINGLE).map((t) => ({
-    taskId: t.id,
-    title: `${overdue(t) ? "Overdue" : "Pending"}: ${t.title}`,
-    // A task in no event has no "Event · Category" line.
-    body: label(t) || "Tap to open it in Task Uncle",
-    sentAt,
-  }));
+  const entries: ReminderEntry[] = due.slice(0, MAX_SINGLE).map((t) => {
+    const day = reminderDay(t, settings, now);
+    return {
+      taskId: t.id,
+      day,
+      title: day
+        ? `Daily: ${t.title}`
+        : `${overdue(t) ? "Overdue" : "Pending"}: ${t.title}`,
+      // A task in no event has no "Event · Category" line.
+      body: day
+        ? [label(t), "Mark done when it's done today"]
+            .filter(Boolean)
+            .join(" · ")
+        : label(t) || "Tap to open it in Task Uncle",
+      sentAt,
+    };
+  });
   if (due.length > MAX_SINGLE) {
     const open = tasks.filter((t) => t.status !== "done");
     entries.push({
       taskId: null,
+      day: null,
       title: `You have ${open.length} pending tasks`,
       body: `${open.filter(overdue).length} overdue — open Task Uncle to clear them`,
       sentAt,
@@ -254,6 +328,8 @@ export type PushPayload = {
   /** Same tag replaces the earlier notification instead of stacking. */
   tag: string;
   taskId: string | null;
+  /** Daily task: the day "Mark done" ticks off. */
+  day: string | null;
 };
 
 export const toPushPayload = (e: ReminderEntry): PushPayload => ({
@@ -261,4 +337,5 @@ export const toPushPayload = (e: ReminderEntry): PushPayload => ({
   body: e.body,
   tag: e.taskId ? `task-${e.taskId}` : "summary",
   taskId: e.taskId,
+  day: e.day,
 });

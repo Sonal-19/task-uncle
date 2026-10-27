@@ -7,10 +7,14 @@ import { taskOut } from "$/lib/services/serialize";
 import {
   CUSTOM_MINUTES_MAX,
   CUSTOM_MINUTES_MIN,
+  checkDay,
+  DONE_DATES_MAX,
+  onOff,
   placeTask,
   priorities,
   statusPatch,
   taskReminders,
+  taskRepeats,
   taskStatuses,
 } from "$/lib/shared/types";
 import { fail, ok } from "$/lib/utils";
@@ -52,6 +56,12 @@ const taskBody = t.Object({
       t.Integer({ minimum: CUSTOM_MINUTES_MIN, maximum: CUSTOM_MINUTES_MAX }),
     ),
   ),
+  /** Optional so ops queued by an older build still go through. */
+  repeat: t.Optional(tEnum(taskRepeats)),
+  /** "HH:mm" of the daily reminder. */
+  repeatTime: t.Optional(t.Nullable(tTime)),
+  /** Days a daily task was done (the whole list, like `subtasks`). */
+  doneDates: t.Optional(t.Array(tDate, { maxItems: DONE_DATES_MAX })),
 });
 
 const extra = {
@@ -76,6 +86,18 @@ async function assignee(userId: number, id: string | null | undefined) {
 }
 
 const toDate = (s: string | null) => (s ? new Date(s) : null);
+
+/** Daily only with a time; the time only when daily. */
+function repeatOf(repeat: string | undefined, time: string | null | undefined) {
+  const daily = repeat === "daily" && !!time;
+  return {
+    repeat: daily ? ("daily" as const) : ("off" as const),
+    repeatTime: daily ? (time ?? null) : null,
+  };
+}
+
+const sortedDays = (days: string[]) =>
+  days.reduce<string[]>((list, d) => checkDay(list, d, true), []);
 
 /** The event and category a task ends up in (`placeTask`), with the ids
  * checked against the user. A string is the reason it can't. */
@@ -139,6 +161,8 @@ export const tasksController = new Elysia({
           ...place,
           title: rest.title.trim(),
           dueTime: rest.dueDate ? rest.dueTime : null,
+          ...repeatOf(rest.repeat, rest.repeatTime),
+          doneDates: sortedDays(rest.doneDates ?? []),
           assigneeId: await assignee(user.id, rest.assigneeId),
           status: s.status ?? "pending",
           startedAt: toDate(s.startedAt ?? null),
@@ -172,6 +196,10 @@ export const tasksController = new Elysia({
         status: st,
         snoozedUntil,
         assigneeId,
+        repeat,
+        repeatTime,
+        doneDates,
+        tickDay,
         ...rest
       } = body;
       const moving =
@@ -189,6 +217,20 @@ export const tasksController = new Elysia({
           )
         : {};
       const dueDate = rest.dueDate !== undefined ? rest.dueDate : task.dueDate;
+      const repeating =
+        repeat !== undefined || repeatTime !== undefined
+          ? repeatOf(
+              repeat ?? task.repeat,
+              repeatTime !== undefined ? repeatTime : task.repeatTime,
+            )
+          : {};
+      let days = doneDates && sortedDays(doneDates);
+      if (tickDay)
+        days = checkDay(
+          days ?? task.doneDates,
+          tickDay.date,
+          tickDay.done === "on",
+        );
       const [row] = await db
         .update(T)
         .set({
@@ -196,6 +238,8 @@ export const tasksController = new Elysia({
           ...(rest.title && { title: rest.title.trim() }),
           ...place,
           ...(!dueDate && { dueTime: null }),
+          ...repeating,
+          ...(days && { doneDates: days }),
           ...(assigneeId !== undefined && {
             assigneeId: await assignee(user.id, assigneeId),
           }),
@@ -220,6 +264,9 @@ export const tasksController = new Elysia({
         t.Object({
           ...extra,
           snoozedUntil: t.Optional(t.Nullable(tStamp)),
+          /** Ticks one day of a daily task (the service worker's "Mark
+           * done", which doesn't know the list). */
+          tickDay: t.Optional(t.Object({ date: tDate, done: tEnum(onOff) })),
           ...tSyncMeta,
         }),
       ]),

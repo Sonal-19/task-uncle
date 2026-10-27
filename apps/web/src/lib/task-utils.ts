@@ -1,5 +1,6 @@
-import { dueAt, isDueToday, isOverdue, todayStr } from "./format";
-import type { Priority, Task } from "./types";
+import { addDays, parse } from "date-fns";
+import { doneToday, dueAt, isDueToday, isOverdue, todayStr } from "./format";
+import { isDaily, type Priority, type Task } from "./types";
 
 export type TaskView =
   | "pending"
@@ -35,6 +36,18 @@ export function matchesView(t: Task, view: TaskView) {
   }
 }
 
+/** When a task wants attention next: a daily task today at its time
+ * (tomorrow once today is ticked off), others their due time. */
+function sortAt(t: Task) {
+  if (!isDaily(t)) return dueAt(t);
+  const at = parse(
+    `${todayStr()} ${t.repeatTime}`,
+    "yyyy-MM-dd HH:mm",
+    new Date(),
+  );
+  return doneToday(t) ? addDays(at, 1) : at;
+}
+
 /** Open tasks: overdue first, then by due time, then priority. Done: latest first. */
 export function sortTasks(list: Task[]) {
   return [...list].sort((a, b) => {
@@ -42,8 +55,8 @@ export function sortTasks(list: Task[]) {
       if (a.status !== b.status) return a.status === "done" ? 1 : -1;
       return (b.completedAt ?? "").localeCompare(a.completedAt ?? "");
     }
-    const da = dueAt(a)?.getTime() ?? Number.POSITIVE_INFINITY;
-    const db = dueAt(b)?.getTime() ?? Number.POSITIVE_INFINITY;
+    const da = sortAt(a)?.getTime() ?? Number.POSITIVE_INFINITY;
+    const db = sortAt(b)?.getTime() ?? Number.POSITIVE_INFINITY;
     if (da !== db) return da - db;
     return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
   });

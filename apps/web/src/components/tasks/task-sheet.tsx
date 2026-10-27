@@ -33,6 +33,7 @@ import {
   settingsLabel,
   type Task,
   type TaskReminder,
+  type TaskRepeat,
   type TaskStatus,
 } from "@/lib/types";
 import { useSheets } from "@/stores/sheet-store";
@@ -50,6 +51,9 @@ type Form = {
   reminder: TaskReminder;
   /** Repeat for `reminder` = custom. */
   reminderMinutes: number;
+  repeat: TaskRepeat;
+  /** "HH:mm" of the daily reminder. */
+  repeatTime: string;
   notes: string;
   subtasks: Subtask[];
 };
@@ -83,6 +87,8 @@ export function TaskSheet() {
         amount: editing.amount ? String(fromAmount(editing.amount)) : "",
         reminder: editing.reminder,
         reminderMinutes: editing.reminderMinutes ?? 120,
+        repeat: editing.repeat,
+        repeatTime: editing.repeatTime ?? "",
         notes: editing.notes,
         subtasks: editing.subtasks,
       });
@@ -116,14 +122,18 @@ export function TaskSheet() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    // A daily task has no due date: it comes back every day.
+    const daily = f.repeat === "daily";
     const body: TaskInput = {
       title: f.title.trim(),
       eventId: f.eventId || null,
       categoryId: f.categoryId || null,
-      status: f.status,
+      status: daily ? "pending" : f.status,
       priority: f.priority,
-      dueDate: f.dueDate || null,
-      dueTime: f.dueDate && f.dueTime ? f.dueTime : null,
+      dueDate: daily ? null : f.dueDate || null,
+      dueTime: !daily && f.dueDate && f.dueTime ? f.dueTime : null,
+      repeat: daily ? "daily" : "off",
+      repeatTime: daily ? f.repeatTime : null,
       assigneeId: f.assigneeId || null,
       amount: f.amount ? toAmount(Number(f.amount)) : null,
       reminder: f.reminder,
@@ -139,6 +149,7 @@ export function TaskSheet() {
   }
 
   const busy = create.isPending || update.isPending;
+  const daily = f.repeat === "daily";
 
   return (
     <ResponsiveSheet
@@ -146,7 +157,11 @@ export function TaskSheet() {
       onOpenChange={(o) => !o && close()}
       title={editing ? "Edit task" : "New task"}
       description={
-        editing ? undefined : "Uncle will keep reminding you until it's done."
+        editing
+          ? undefined
+          : daily
+            ? "Uncle reminds you every day until you turn the repeat off."
+            : "Uncle will keep reminding you until it's done."
       }
     >
       {
@@ -199,24 +214,58 @@ export function TaskSheet() {
             </Field>
           </div>
 
-          <div className="grid grid-cols-[1fr_8.5rem] gap-3">
-            <Field label="Due date" htmlFor="t-date">
-              <DateInput
-                id="t-date"
-                value={f.dueDate}
-                onChange={(v) => set("dueDate", v)}
-              />
-            </Field>
-            <Field label="Time" htmlFor="t-time">
+          <Field label="Repeat">
+            <Segmented<TaskRepeat>
+              className="flex w-full"
+              value={f.repeat}
+              onChange={(repeat) =>
+                setF((p) => ({
+                  ...p,
+                  repeat,
+                  repeatTime: p.repeatTime || p.dueTime || "09:00",
+                }))
+              }
+              options={[
+                { value: "off", label: "Once" },
+                { value: "daily", label: "Every day" },
+              ]}
+            />
+          </Field>
+
+          {daily ? (
+            <Field
+              label="Remind me every day at"
+              htmlFor="t-rtime"
+              required
+              hint="One reminder a day at this time. Tick off each day when it's done; it keeps coming until you set Repeat back to Once."
+            >
               <TimeInput
-                id="t-time"
-                placeholder="Any time"
-                disabled={!f.dueDate}
-                value={f.dueTime}
-                onChange={(v) => set("dueTime", v)}
+                id="t-rtime"
+                placeholder="Pick a time"
+                value={f.repeatTime}
+                onChange={(v) => set("repeatTime", v)}
               />
             </Field>
-          </div>
+          ) : (
+            <div className="grid grid-cols-[1fr_8.5rem] gap-3">
+              <Field label="Due date" htmlFor="t-date">
+                <DateInput
+                  id="t-date"
+                  value={f.dueDate}
+                  onChange={(v) => set("dueDate", v)}
+                />
+              </Field>
+              <Field label="Time" htmlFor="t-time">
+                <TimeInput
+                  id="t-time"
+                  placeholder="Any time"
+                  disabled={!f.dueDate}
+                  value={f.dueTime}
+                  onChange={(v) => set("dueTime", v)}
+                />
+              </Field>
+            </div>
+          )}
 
           <Field label="Priority">
             <Segmented
@@ -227,7 +276,7 @@ export function TaskSheet() {
             />
           </Field>
 
-          {editing && (
+          {editing && !daily && (
             <Field label="Status">
               <Segmented
                 className="flex w-full"
@@ -271,25 +320,27 @@ export function TaskSheet() {
             </Field>
           </div>
 
-          <Field label="Remind me" htmlFor="t-rem">
-            <SelectField<TaskReminder>
-              id="t-rem"
-              value={f.reminder}
-              onChange={(v) => set("reminder", v)}
-              options={[
-                {
-                  value: "inherit",
-                  label: settings
-                    ? `As in settings (${settingsLabel(settings).toLowerCase()})`
-                    : "As in settings",
-                },
-                ...INTERVALS,
-                { value: "custom", label: "Custom…" },
-                { value: "off", label: "Don't remind" },
-              ]}
-            />
-          </Field>
-          {f.reminder === "custom" && (
+          {!daily && (
+            <Field label="Remind me" htmlFor="t-rem">
+              <SelectField<TaskReminder>
+                id="t-rem"
+                value={f.reminder}
+                onChange={(v) => set("reminder", v)}
+                options={[
+                  {
+                    value: "inherit",
+                    label: settings
+                      ? `As in settings (${settingsLabel(settings).toLowerCase()})`
+                      : "As in settings",
+                  },
+                  ...INTERVALS,
+                  { value: "custom", label: "Custom…" },
+                  { value: "off", label: "Don't remind" },
+                ]}
+              />
+            </Field>
+          )}
+          {!daily && f.reminder === "custom" && (
             <DurationPicker
               // Fresh drafts each time the sheet opens.
               key={`${open}-${editing?.id ?? "new"}`}
@@ -376,7 +427,10 @@ export function TaskSheet() {
               disabled={
                 busy ||
                 !f.title.trim() ||
-                (f.reminder === "custom" && !validRepeat(f.reminderMinutes))
+                (daily && !f.repeatTime) ||
+                (!daily &&
+                  f.reminder === "custom" &&
+                  !validRepeat(f.reminderMinutes))
               }
             >
               {editing ? "Save" : "Add task"}
@@ -401,6 +455,8 @@ function blank(): Form {
     amount: "",
     reminder: "inherit",
     reminderMinutes: 120,
+    repeat: "off",
+    repeatTime: "",
     notes: "",
     subtasks: [],
   };

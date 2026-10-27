@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   addLog,
   markReminded,
+  setTaskDay,
   setTaskStatus,
   snoozeTask,
   updateSettings,
@@ -12,13 +13,14 @@ import {
 } from "@/hooks/use-data";
 import { queryClient as qc } from "@/integrations/tanstack-query/root-provider";
 import { fetchers } from "@/lib/fetchers";
+import { shortDate, todayStr } from "@/lib/format";
 import { useOutbox } from "@/lib/offline/outbox";
 import { refresh } from "@/lib/offline/sync";
 import type { PushConfig } from "@/lib/push";
 import { keys } from "@/lib/query-keys";
 import { permission, showNotification } from "@/lib/reminders/notify";
 import { planReminders } from "@/lib/reminders/reminder-engine";
-import type { Category, Task, TaskEvent } from "@/lib/types";
+import { type Category, isDaily, type Task, type TaskEvent } from "@/lib/types";
 import { useAuthStore } from "@/stores/auth-store";
 
 const CHECK_EVERY = 60_000;
@@ -80,7 +82,7 @@ export async function runReminderCheck(now = new Date(), force = false) {
     due.map((t) => t.id),
     now.toISOString(),
   );
-  addLog(entries);
+  addLog(entries.map(({ day: _d, ...e }) => e));
 
   if (permission() === "granted") {
     for (const e of entries)
@@ -89,6 +91,7 @@ export async function runReminderCheck(now = new Date(), force = false) {
         body: e.body,
         tag: e.taskId ? `task-${e.taskId}` : "summary",
         taskId: e.taskId ?? undefined,
+        day: e.day,
         requireInteraction: !!e.taskId,
       });
   } else if (document.visibilityState === "visible") {
@@ -142,13 +145,18 @@ export function useReminders() {
     else run();
 
     const onMessage = (e: MessageEvent) => {
-      const msg = e.data as { type?: string; taskId?: string; action?: string };
+      const msg = e.data as {
+        type?: string;
+        taskId?: string;
+        action?: string;
+        day?: string | null;
+      };
       // A push arrived, or the worker changed a task itself: pull fresh data
       // (new reminder times, bell entries).
       if (msg?.type === "push-received" || msg?.type === "refresh")
         return void refresh();
       if (msg?.type !== "task-action" || !msg.taskId) return;
-      applyTaskAction(msg.taskId, msg.action);
+      applyTaskAction(msg.taskId, msg.action, msg.day);
       if (!msg.action) navigate({ to: "/tasks", search: { task: msg.taskId } });
     };
     navigator.serviceWorker?.addEventListener("message", onMessage);
@@ -164,13 +172,22 @@ export function useReminders() {
   }, [navigate]);
 }
 
-/** "done" / "snooze" from a notification button. */
-export function applyTaskAction(taskId: string, action?: string) {
+/** "done" / "snooze" from a notification button. A daily task's "done"
+ * ticks off the reminder's day (today when it doesn't say). */
+export function applyTaskAction(
+  taskId: string,
+  action?: string,
+  day?: string | null,
+) {
   const task = qc
     .getQueryData<Task[]>(keys.tasks)
     ?.find((t) => t.id === taskId);
   if (!task) return;
-  if (action === "done") {
+  if (action === "done" && isDaily(task)) {
+    const date = day ?? todayStr();
+    setTaskDay(taskId, date, true);
+    toast.success(`Done for ${shortDate(date)}`, { description: task.title });
+  } else if (action === "done") {
     setTaskStatus(taskId, "done");
     toast.success("Marked as done", { description: task.title });
   } else if (action === "snooze") {

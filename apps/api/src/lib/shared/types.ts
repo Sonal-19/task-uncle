@@ -17,6 +17,9 @@ export const taskReminders = [
   "custom",
 ] as const;
 export const onOff = ["on", "off"] as const;
+/** `daily` = one reminder every day at `repeatTime`, ticked off per day
+ * (`doneDates`) until the repeat is turned off. */
+export const taskRepeats = ["off", "daily"] as const;
 
 /** `admin` opens the admin panel (set with `db:make-admin` or by another admin). */
 export const userRoles = ["user", "admin"] as const;
@@ -44,6 +47,7 @@ export type CategoryKind = (typeof categoryKinds)[number];
 export type ReminderEvery = (typeof reminderEveries)[number];
 export type TaskReminder = (typeof taskReminders)[number];
 export type OnOff = (typeof onOff)[number];
+export type TaskRepeat = (typeof taskRepeats)[number];
 
 export type TaskEvent = {
   id: string;
@@ -103,6 +107,12 @@ export type Task = {
   reminder: TaskReminder;
   /** Minutes between reminders when `reminder` is "custom" (else null). */
   reminderMinutes: number | null;
+  /** A daily task stays open; each day is ticked off in `doneDates`. */
+  repeat: TaskRepeat;
+  /** "HH:mm" of the daily reminder (only with repeat = daily). */
+  repeatTime: string | null;
+  /** `yyyy-MM-dd` days a daily task was done, oldest first. */
+  doneDates: string[];
   snoozedUntil: string | null;
   lastRemindedAt: string | null;
   createdAt: string;
@@ -235,6 +245,20 @@ export function newId(): string {
   const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
+
+/** Days kept in `doneDates` (older ones are dropped). */
+export const DONE_DATES_MAX = 400;
+
+/** `doneDates` with `date` ticked (`done`) or unticked. Set semantics, so
+ * the same change applied twice (an offline replay) gives the same list. */
+export function checkDay(doneDates: string[], date: string, done: boolean) {
+  const rest = doneDates.filter((d) => d !== date);
+  return (done ? [...rest, date].sort() : rest).slice(-DONE_DATES_MAX);
+}
+
+/** A daily task that is on. */
+export const isDaily = (t: Pick<Task, "repeat" | "repeatTime">) =>
+  t.repeat === "daily" && !!t.repeatTime;
 
 type Place = { eventId: string | null; categoryId: string | null };
 

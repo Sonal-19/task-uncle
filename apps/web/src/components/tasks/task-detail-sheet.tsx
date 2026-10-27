@@ -1,14 +1,23 @@
 import { Link } from "@tanstack/react-router";
-import { addHours, setHours, setMinutes, startOfTomorrow } from "date-fns";
+import {
+  addHours,
+  format,
+  parseISO,
+  setHours,
+  setMinutes,
+  startOfTomorrow,
+} from "date-fns";
 import {
   AlarmClock,
   Bell,
   Check,
   CheckCircle2,
   Clock,
+  Flame,
   IndianRupee,
   Pencil,
   Play,
+  Repeat,
   RotateCcw,
   Trash2,
   User,
@@ -32,20 +41,28 @@ import {
 import {
   useDeleteTask,
   useLookups,
+  useSetTaskDay,
   useSetTaskStatus,
   useSettings,
   useSnoozeTask,
   useTasks,
   useToggleSubtask,
+  useUpdateTask,
 } from "@/hooks/use-data";
 import {
+  doneToday,
   formatAmount,
   formatDateTime,
   formatDue,
   formatUpcoming,
   isOverdue,
+  lastDays,
+  parseDay,
+  streakOf,
+  todayStr,
 } from "@/lib/format";
 import { nextReminderAt } from "@/lib/reminders/reminder-engine";
+import { isDaily, type Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSheets } from "@/stores/sheet-store";
 import { reminderLabel } from "./task-sheet";
@@ -58,6 +75,8 @@ export function TaskDetailSheet() {
   const settings = useSettings().data;
   const { eventById, categoryById, personById } = useLookups();
   const setStatus = useSetTaskStatus();
+  const setDay = useSetTaskDay();
+  const update = useUpdateTask();
   const snooze = useSnoozeTask();
   const toggleSub = useToggleSubtask();
   const del = useDeleteTask();
@@ -76,6 +95,8 @@ export function TaskDetailSheet() {
   const cat = task.categoryId ? categoryById.get(task.categoryId) : undefined;
   const who = task.assigneeId ? personById.get(task.assigneeId) : undefined;
   const done = task.status === "done";
+  const daily = isDaily(task) && !done;
+  const today = daily && doneToday(task);
   const overdue = isOverdue(task);
   const next = settings ? nextReminderAt(task, settings) : null;
   const snoozed =
@@ -105,7 +126,13 @@ export function TaskDetailSheet() {
     >
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge status={overdue ? "overdue" : task.status} />
+          {daily ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+              <Repeat className="size-3.5" /> Every day
+            </span>
+          ) : (
+            <StatusBadge status={overdue ? "overdue" : task.status} />
+          )}
           <PriorityFlag priority={task.priority} withLabel />
           {snoozed && (
             <span className="text-xs font-medium text-pending">
@@ -148,7 +175,10 @@ export function TaskDetailSheet() {
         )}
 
         <dl className="grid grid-cols-2 gap-3 text-sm">
-          <Info icon={<Clock />} label="Due">
+          <Info
+            icon={daily ? <Repeat /> : <Clock />}
+            label={daily ? "Repeats" : "Due"}
+          >
             <span className={cn(overdue && "font-semibold text-overdue")}>
               {formatDue(task)}
             </span>
@@ -176,13 +206,26 @@ export function TaskDetailSheet() {
           <Info icon={<Bell />} label="Reminders">
             {done
               ? "Stopped (done)"
-              : task.reminder === "off"
-                ? "Off"
-                : next
+              : daily
+                ? next
                   ? `Next ${formatUpcoming(next)}`
-                  : reminderLabel(task)}
+                  : "Once a day"
+                : task.reminder === "off"
+                  ? "Off"
+                  : next
+                    ? `Next ${formatUpcoming(next)}`
+                    : reminderLabel(task)}
           </Info>
         </dl>
+
+        {daily && (
+          <DayHistory
+            task={task}
+            onToggle={(date, done) =>
+              setDay.mutate({ id: task.id, date, done })
+            }
+          />
+        )}
 
         {task.subtasks.length > 0 && (
           <div>
@@ -257,6 +300,46 @@ export function TaskDetailSheet() {
             >
               <RotateCcw /> Reopen task
             </Button>
+          ) : daily ? (
+            <>
+              {today ? (
+                <Button
+                  variant="outline"
+                  className="col-span-2"
+                  onClick={() =>
+                    setDay.mutate({
+                      id: task.id,
+                      date: todayStr(),
+                      done: false,
+                    })
+                  }
+                >
+                  <RotateCcw /> Not done today
+                </Button>
+              ) : (
+                <Button
+                  className="col-span-2 bg-done text-white hover:bg-done/90 dark:text-emerald-950"
+                  onClick={() =>
+                    setDay.mutate({ id: task.id, date: todayStr(), done: true })
+                  }
+                >
+                  <CheckCircle2 /> Done for today
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => update.mutate({ id: task.id, repeat: "off" })}
+              >
+                <Repeat /> Stop repeating
+              </Button>
+              <Button
+                variant="outline"
+                disabled={today}
+                onClick={() => snoozeTo(addHours(new Date(), 1))}
+              >
+                <AlarmClock /> Snooze 1h
+              </Button>
+            </>
           ) : (
             <>
               <Button
@@ -345,6 +428,77 @@ export function TaskDetailSheet() {
         </div>
       </div>
     </ResponsiveSheet>
+  );
+}
+
+const HISTORY_DAYS = 14;
+
+/** The last two weeks of a daily task, each day tickable (oldest left). */
+function DayHistory({
+  task,
+  onToggle,
+}: {
+  task: Task;
+  onToggle: (date: string, done: boolean) => void;
+}) {
+  const done = new Set(task.doneDates);
+  // Never before the task existed.
+  const since = format(parseISO(task.createdAt), "yyyy-MM-dd");
+  const days = lastDays(HISTORY_DAYS)
+    .filter((d) => d >= since)
+    .reverse();
+  const streak = streakOf(task);
+  const count = days.filter((d) => done.has(d)).length;
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between text-sm">
+        <p className="font-semibold">
+          Every day · {count}/{days.length}
+        </p>
+        {streak > 0 && (
+          <span className="flex items-center gap-1 font-semibold text-orange-500">
+            <Flame className="size-4" /> {streak} day{streak === 1 ? "" : "s"}{" "}
+            in a row
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {days.map((d) => {
+          const on = done.has(d);
+          const isToday = d === todayStr();
+          return (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={on}
+              aria-label={`${format(parseDay(d), "d MMM")}: ${on ? "done" : "not done"}`}
+              onClick={() => onToggle(d, !on)}
+              className={cn(
+                "flex flex-col items-center gap-0.5 rounded-lg border py-1.5 text-xs transition-colors",
+                on
+                  ? "border-done bg-done text-white"
+                  : "hover:border-primary hover:bg-primary/10",
+                isToday && !on && "border-primary",
+              )}
+            >
+              <span
+                className={cn("text-[10px]", !on && "text-muted-foreground")}
+              >
+                {isToday ? "Today" : format(parseDay(d), "EEE")}
+              </span>
+              <span className="font-semibold tabular">
+                {format(parseDay(d), "d MMM")}
+              </span>
+              {on ? (
+                <Check className="size-3.5" strokeWidth={3} />
+              ) : (
+                <span className="size-3.5" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

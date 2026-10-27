@@ -11,6 +11,7 @@ import {
 import {
   CUSTOM_MINUTES_MAX,
   CUSTOM_MINUTES_MIN,
+  checkDay,
   type DataState,
   DEFAULT_SETTINGS,
   eventStatuses,
@@ -20,6 +21,7 @@ import {
   reminderEveries,
   type Subtask,
   taskReminders,
+  taskRepeats,
   taskStatuses,
 } from "$/lib/shared/types";
 import {
@@ -164,6 +166,12 @@ export async function replaceAll(userId: number, input: unknown) {
       doneAt: typeof s.doneAt === "string" ? s.doneAt : null,
     }));
     const amount = Number(t.amount);
+    const repeat = oneOf(t.repeat, taskRepeats, "off");
+    const repeatTime = repeat === "daily" ? time(t.repeatTime) : null;
+    const doneDates = (Array.isArray(t.doneDates) ? t.doneDates : [])
+      .map(date)
+      .filter((d): d is string => !!d)
+      .reduce<string[]>((list, d) => checkDay(list, d, true), []);
     return [
       {
         id: mapId(t.id),
@@ -190,6 +198,9 @@ export async function replaceAll(userId: number, input: unknown) {
           (t.reminderMinutes as number) <= CUSTOM_MINUTES_MAX
             ? (t.reminderMinutes as number)
             : null,
+        repeat: repeatTime ? repeat : "off",
+        repeatTime,
+        doneDates,
         snoozedUntil: stamp(t.snoozedUntil),
         lastRemindedAt: stamp(t.lastRemindedAt),
         startedAt: stamp(t.startedAt),

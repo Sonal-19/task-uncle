@@ -89,6 +89,7 @@ export const pushController = new Elysia({
         body: "Reminders reach this device even when the app is closed.",
         tag: "test",
         taskId: null,
+        day: null,
       },
     ]);
     if (!res.devices)

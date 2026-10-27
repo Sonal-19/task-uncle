@@ -121,6 +121,11 @@ export function applyOp(
               ...(status ? statusPatch(t, status, op.at) : {}),
             };
             if (!next.dueDate) next.dueTime = null;
+            // Same rule as the API: daily only with a time.
+            if (next.repeat !== "daily" || !next.repeatTime) {
+              next.repeat = "off";
+              next.repeatTime = null;
+            }
             // Same rule as the API: a category decides the event.
             if (rest.categoryId !== undefined || rest.eventId !== undefined)
               Object.assign(

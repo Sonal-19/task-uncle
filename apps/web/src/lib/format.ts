@@ -4,8 +4,9 @@ import {
   formatDistanceToNowStrict,
   parse,
   parseISO,
+  subDays,
 } from "date-fns";
-import type { Task } from "./types";
+import { isDaily, type Task } from "./types";
 
 const inrFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -90,11 +91,36 @@ export function isOverdue(t: Task, now = new Date()) {
   return t.status !== "done" && !!d && d < now;
 }
 
+/** A daily task counts as due today until today is ticked off. */
 export const isDueToday = (t: Task) =>
-  t.status !== "done" && t.dueDate === todayStr();
+  t.status !== "done" &&
+  (isDaily(t) ? !doneToday(t) : t.dueDate === todayStr());
 
-/** "Today, 4:30 PM" / "Overdue · 2 days" / "Fri, 9 Oct" */
+/** A daily task ticked off for today. */
+export const doneToday = (t: Task) =>
+  isDaily(t) && t.doneDates.includes(todayStr());
+
+/** The last `n` days, today first (yyyy-MM-dd). */
+export const lastDays = (n: number, from = new Date()) =>
+  Array.from({ length: n }, (_, i) => format(subDays(from, i), "yyyy-MM-dd"));
+
+/** Days in a row a daily task was done, up to today (today still open
+ * doesn't break it). */
+export function streakOf(t: Pick<Task, "doneDates">) {
+  const done = new Set(t.doneDates);
+  const days = lastDays(t.doneDates.length + 1);
+  if (!done.has(days[0]!)) days.shift();
+  let n = 0;
+  for (const d of days) {
+    if (!done.has(d)) break;
+    n++;
+  }
+  return n;
+}
+
+/** "Today, 4:30 PM" / "Overdue · 2 days" / "Fri, 9 Oct" / "Every day, 11:00 AM" */
 export function formatDue(t: Task) {
+  if (isDaily(t)) return `Every day, ${formatTime(t.repeatTime!)}`;
   if (!t.dueDate) return "No due date";
   const time = t.dueTime ? `, ${formatTime(t.dueTime)}` : "";
   if (isOverdue(t)) {

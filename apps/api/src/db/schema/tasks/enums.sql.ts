@@ -5,6 +5,7 @@ import {
   priorities,
   reminderEveries,
   taskReminders,
+  taskRepeats,
   taskStatuses,
 } from "$/lib/shared/types";
 
@@ -13,5 +14,6 @@ export const taskStatusEnum = pgEnum("task_status", taskStatuses);
 export const priorityEnum = pgEnum("priority", priorities);
 export const reminderEveryEnum = pgEnum("reminder_every", reminderEveries);
 export const taskReminderEnum = pgEnum("task_reminder", taskReminders);
+export const taskRepeatEnum = pgEnum("task_repeat", taskRepeats);
 /** On/off settings (no boolean columns). */
 export const onOffEnum = pgEnum("on_off", onOff);
