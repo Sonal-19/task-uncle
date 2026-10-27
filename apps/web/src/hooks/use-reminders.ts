@@ -19,11 +19,22 @@ import { refresh } from "@/lib/offline/sync";
 import type { PushConfig } from "@/lib/push";
 import { keys } from "@/lib/query-keys";
 import { permission, showNotification } from "@/lib/reminders/notify";
-import { planReminders } from "@/lib/reminders/reminder-engine";
-import { type Category, isDaily, type Task, type TaskEvent } from "@/lib/types";
+import { nextReminderAt, planReminders } from "@/lib/reminders/reminder-engine";
+import {
+  type Category,
+  isDaily,
+  type Settings,
+  type Task,
+  type TaskEvent,
+} from "@/lib/types";
 import { useAuthStore } from "@/stores/auth-store";
 
-const CHECK_EVERY = 60_000;
+/** The engine sleeps until the next reminder is due, but never longer than
+ * this: a task turning overdue (shorter interval) or a clock change is
+ * caught within it. One cheap timer, nothing else runs in between. */
+const MAX_SLEEP = 2 * 60_000;
+/** Reminders due within this much are sent in the same pass. */
+const MIN_SLEEP = 1000;
 
 /** The API's scheduler sends this user's reminders by Web Push while it is
  * reachable and at least one of their browsers is subscribed; this engine
@@ -119,18 +130,81 @@ export function useReminders() {
   }, [loaded, savedZone]);
 
   useEffect(() => {
-    let first: ReturnType<typeof setTimeout> | undefined;
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const tick = () => void runReminderCheck();
-    const onVisible = () => document.visibilityState === "visible" && tick();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let running = false;
+    let active = false;
+
+    /** Sleep until the earliest reminder (from the cached data, so this
+     * works offline), then check. Cheap: one pass over the tasks. */
+    const schedule = () => {
+      if (!active) return;
+      clearTimeout(timer);
+      const tasks = qc.getQueryData<Task[]>(keys.tasks);
+      const settings = qc.getQueryData<Settings>(keys.settings);
+      const now = new Date();
+      let wait = MAX_SLEEP;
+      // While the server pushes, only online/offline changes matter (they
+      // wake the engine themselves).
+      if (tasks && settings && !serverReminds())
+        for (const t of tasks) {
+          const at = nextReminderAt(t, settings, now);
+          if (at) wait = Math.min(wait, at.getTime() - now.getTime());
+        }
+      timer = setTimeout(tick, Math.max(MIN_SLEEP, wait));
+    };
+    const tick = async () => {
+      if (running) return;
+      running = true;
+      try {
+        await runReminderCheck();
+      } finally {
+        running = false;
+        schedule();
+      }
+    };
+
+    // Catch up the moment the app is back: phones freeze installed apps in
+    // the background (timers stop), and a laptop may have slept.
+    const wake = () => {
+      if (document.visibilityState === "visible" || !navigator.onLine)
+        void tick();
+      else schedule();
+    };
+    const onVisible = () => document.visibilityState === "visible" && wake();
+    // New or edited tasks, a snooze, new settings: re-plan the sleep.
+    let planned: unknown[] = [];
+    const unsubCache = qc.getQueryCache().subscribe((e) => {
+      if (e.type !== "updated" || e.query.queryKey[0] !== "tu") return;
+      const k = e.query.queryKey[1];
+      if (k !== "tasks" && k !== "settings" && k !== "push") return;
+      const now = [
+        qc.getQueryData(keys.tasks),
+        qc.getQueryData(keys.settings),
+        qc.getQueryData(keys.push),
+      ];
+      if (now.every((d, i) => d === planned[i])) return;
+      planned = now;
+      schedule();
+    });
+    const unsubOnline = useOutbox.subscribe((st, prev) => {
+      if (st.online !== prev.online) wake();
+    });
+
     const run = () => {
-      first = setTimeout(tick, 4000);
-      timer = setInterval(tick, CHECK_EVERY);
+      active = true;
+      timer = setTimeout(tick, 1500);
       document.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("online", wake);
+      window.addEventListener("offline", wake);
+      window.addEventListener("pageshow", wake);
+      // Page Lifecycle: unfrozen after the browser froze the tab.
+      document.addEventListener("resume", wake);
     };
 
     // Several tabs open: only the one holding the lock reminds, so nothing
     // is notified or logged twice. When it closes, the next tab takes over.
+    // Holding a Web Lock also keeps Chrome from freezing or discarding this
+    // tab in the background.
     const stop = new AbortController();
     let release: (() => void) | undefined;
     if (navigator.locks)
@@ -162,11 +236,17 @@ export function useReminders() {
     navigator.serviceWorker?.addEventListener("message", onMessage);
 
     return () => {
+      active = false;
       stop.abort();
       release?.();
-      clearTimeout(first);
-      clearInterval(timer);
+      clearTimeout(timer);
+      unsubCache();
+      unsubOnline();
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", wake);
+      window.removeEventListener("offline", wake);
+      window.removeEventListener("pageshow", wake);
+      document.removeEventListener("resume", wake);
       navigator.serviceWorker?.removeEventListener("message", onMessage);
     };
   }, [navigate]);

@@ -16,7 +16,7 @@ export const queryClient = new QueryClient({
       // fresh server data never briefly hides them.
       refetchOnReconnect: false,
       // Kept long enough to be saved for offline use.
-      gcTime: 7 * DAY,
+      gcTime: 30 * DAY,
     },
     // Writes go through the outbox; the few direct ones (login, import)
     // fail fast with "you're offline" instead of waiting silently.
@@ -32,18 +32,23 @@ export function Provider({
   children,
   queryClient,
   onRestored,
+  onRestoreFailed,
 }: {
   children: React.ReactNode;
   queryClient: QueryClient;
   onRestored?: () => void;
+  onRestoreFailed?: () => void;
 }) {
   return (
     <PersistQueryClientProvider
       client={queryClient}
       onSuccess={onRestored}
+      onError={onRestoreFailed}
       persistOptions={{
         persister: queryPersister,
-        maxAge: 7 * DAY,
+        // A month offline still opens with every task (and keeps reminding
+        // from them): as long as a login lasts.
+        maxAge: 30 * DAY,
         // A new build may change response shapes: start from a clean cache.
         buster: __APP_VERSION__,
         dehydrateOptions: {

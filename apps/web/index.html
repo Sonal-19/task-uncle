@@ -18,8 +18,132 @@
     <meta name="apple-mobile-web-app-title" content="Task Uncle" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- iOS launch screens (portrait), rendered by `bun run icons`. -->
+    <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1320x2868.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1290x2796.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1260x2736.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1206x2622.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1179x2556.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1284x2778.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1170x2532.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1125x2436.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1242x2688.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/828x1792.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash/1242x2208.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/750x1334.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/640x1136.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/2048x2732.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/1668x2388.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/1640x2360.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/1620x2160.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/1536x2048.jpg" />
+    <link rel="apple-touch-startup-image" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash/1488x2266.jpg" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <style>
+      /* Launch splash (installed app only): painted before any JS, the same
+         picture as the iOS startup images (bun run icons), faded out by
+         lib/splash.ts once the saved data is back. */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: none;
+        background: radial-gradient(120% 75% at 50% 38%, #6366f1 0%, #4338ca 52%, #1e1b4b 100%);
+        color: #fff;
+        font-family: "Plus Jakarta Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+        overflow: hidden;
+        transition: opacity 0.38s ease, visibility 0.38s;
+      }
+      html.tu-splash #splash { display: block; }
+      #splash.out { opacity: 0; visibility: hidden; pointer-events: none; }
+      #splash .mark {
+        position: absolute;
+        left: 50%;
+        top: 42%;
+        width: min(38vw, 168px);
+        aspect-ratio: 1;
+        transform: translate(-50%, -50%);
+      }
+      #splash.out .mark { transform: translate(-50%, -50%) scale(1.12); transition: transform 0.38s ease; }
+      #splash .mark svg { position: relative; width: 100%; height: 100%; overflow: visible; }
+      #splash .bell { transform-origin: 256px 110px; animation: tu-ring 1.5s ease-in-out 0.15s both; }
+      #splash .ring {
+        position: absolute;
+        inset: 6%;
+        border-radius: 50%;
+        border: 2px solid rgba(199, 210, 254, 0.55);
+        animation: tu-wave 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+      }
+      #splash .ring + .ring { animation-delay: 1.2s; }
+      #splash .words {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(42% + min(19vw, 84px) + 28px);
+        text-align: center;
+        animation: tu-up 0.6s ease 0.25s both;
+      }
+      #splash h1 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+      #splash p { margin: 6px 0 0; font-size: 15px; font-weight: 500; color: #c7d2fe; }
+      #splash .foot {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: calc(env(safe-area-inset-bottom) + 44px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        font-size: 12.5px;
+        color: #a5b4fc;
+        animation: tu-up 0.6s ease 0.5s both;
+      }
+      #splash .dots { display: flex; gap: 7px; }
+      #splash .dots i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #e0e7ff;
+        animation: tu-dot 1s ease-in-out infinite;
+      }
+      #splash .dots i:nth-child(2) { animation-delay: 0.15s; }
+      #splash .dots i:nth-child(3) { animation-delay: 0.3s; }
+      #splash .note:empty { display: none; }
+      @keyframes tu-ring {
+        0%, 100% { transform: rotate(0); }
+        12% { transform: rotate(13deg); }
+        28% { transform: rotate(-11deg); }
+        44% { transform: rotate(8deg); }
+        60% { transform: rotate(-5deg); }
+        76% { transform: rotate(2deg); }
+      }
+      @keyframes tu-wave {
+        from { transform: scale(0.9); opacity: 0.9; }
+        to { transform: scale(2.1); opacity: 0; }
+      }
+      @keyframes tu-up {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: none; }
+      }
+      @keyframes tu-dot {
+        0%, 100% { opacity: 0.35; transform: translateY(0); }
+        50% { opacity: 1; transform: translateY(-4px); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash *, #splash { animation: none !important; transition: none !important; }
+      }
+    </style>
     <script>
+      // Installed app: show the launch splash (see #splash above).
+      (() => {
+        try {
+          if (
+            matchMedia("(display-mode: standalone)").matches ||
+            navigator.standalone === true
+          )
+            document.documentElement.classList.add("tu-splash");
+        } catch {}
+      })();
       // Apply the saved theme before first paint (no flash).
       (() => {
         try {
@@ -35,6 +159,50 @@
     </script>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <div class="mark">
+        <span class="ring"></span><span class="ring"></span>
+        <svg viewBox="0 0 512 512">
+          <defs>
+            <linearGradient id="sp-bell" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fff" />
+              <stop offset="1" stop-color="#e0e7ff" />
+            </linearGradient>
+          </defs>
+          <g fill="none" stroke="#c7d2fe" stroke-width="16" stroke-linecap="round" opacity=".75">
+            <path d="M118 150c-22 26-32 56-32 90" />
+            <path d="M394 150c22 26 32 56 32 90" />
+          </g>
+          <g class="bell">
+            <circle cx="256" cy="106" r="20" fill="url(#sp-bell)" />
+            <path d="M256 118c-76 0-110 58-110 132v66l-30 34c-8 9-2 22 10 22h260c12 0 18-13 10-22l-30-34v-66c0-74-34-132-110-132z" fill="url(#sp-bell)" />
+            <g fill="none" stroke="#312e81" stroke-width="12">
+              <circle cx="213" cy="234" r="29" />
+              <circle cx="299" cy="234" r="29" />
+              <path d="M242 230q14-9 28 0" stroke-linecap="round" />
+            </g>
+            <circle cx="213" cy="236" r="8" fill="#312e81" />
+            <circle cx="299" cy="236" r="8" fill="#312e81" />
+            <path fill="#312e81" d="M256 284C236 266 202 264 184 281c-10 9-25 9-33-1 3 27 34 40 63 31 18-6 31-15 42-15 11 0 24 9 42 15 29 9 60-4 63-31-8 10-23 10-33 1-18-17-52-15-72 3z" />
+            <circle cx="256" cy="400" r="40" fill="#f59e0b" stroke="#4338ca" stroke-width="10" />
+            <path d="M238 400l12 12 24-25" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" />
+          </g>
+        </svg>
+      </div>
+      <div class="words">
+        <h1>Task Uncle</h1>
+        <p>Reminds you until it's done</p>
+      </div>
+      <div class="foot">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="note" id="splash-note"></div>
+      </div>
+    </div>
+    <script>
+      if (!navigator.onLine)
+        document.getElementById("splash-note").textContent =
+          "Offline · opening the tasks saved on this device";
+    </script>
     <div id="app"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

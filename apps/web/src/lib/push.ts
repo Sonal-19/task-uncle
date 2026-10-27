@@ -154,7 +154,8 @@ export async function resetPush() {
 /**
  * Periodic Background Sync (Chrome, installed app): lets the service worker
  * wake up now and then with no network and remind from the cached tasks.
- * The browser decides how often (often a few times a day at most).
+ * The browser decides how often (by how much the app is used, often a few
+ * times a day at most); asking for every 15 minutes gets the most it allows.
  */
 export async function registerBackgroundCheck() {
   const reg = (await registration()) as
@@ -171,7 +172,7 @@ export async function registerBackgroundCheck() {
     });
     if (status.state !== "granted") return;
     await reg.periodicSync.register("tu-reminders", {
-      minInterval: 60 * 60_000,
+      minInterval: 15 * 60_000,
     });
   } catch {}
 }

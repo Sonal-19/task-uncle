@@ -5,6 +5,7 @@ import ReactDOM from "react-dom/client";
 import * as TanStackQueryProvider from "./integrations/tanstack-query/root-provider.tsx";
 import { startSync } from "./lib/offline/sync";
 import { listenForInstall } from "./lib/pwa";
+import { hideSplash } from "./lib/splash";
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
@@ -54,7 +55,11 @@ if (rootElement && !rootElement.innerHTML) {
     <StrictMode>
       <TanStackQueryProvider.Provider
         {...TanStackQueryProviderContext}
-        onRestored={startSync}
+        onRestored={() => {
+          startSync();
+          hideSplash();
+        }}
+        onRestoreFailed={hideSplash}
       >
         <RouterProvider router={router} />
       </TanStackQueryProvider.Provider>
