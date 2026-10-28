@@ -170,6 +170,7 @@ export async function replaceAll(userId: number, input: unknown) {
     const repeating = repeatFields({
       repeat: oneOf(t.repeat, taskRepeats, "off"),
       repeatEvery: Number(t.repeatEvery) || 1,
+      repeatDays: Array.isArray(t.repeatDays) ? t.repeatDays.map(Number) : [],
       repeatStart: date(t.repeatStart),
       repeatTime: time(t.repeatTime),
     });

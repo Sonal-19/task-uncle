@@ -62,6 +62,10 @@ const taskBody = t.Object({
   repeat: t.Optional(tEnum(taskRepeats)),
   /** Every how many days / weeks / months. */
   repeatEvery: t.Optional(t.Integer({ minimum: 1, maximum: REPEAT_EVERY_MAX })),
+  /** Weekdays (0 = Sun) of a weekly routine; empty = the start's. */
+  repeatDays: t.Optional(
+    t.Array(t.Integer({ minimum: 0, maximum: 6 }), { maxItems: 7 }),
+  ),
   /** The routine's first occurrence. */
   repeatStart: t.Optional(t.Nullable(tDate)),
   /** "HH:mm" of the routine's reminder. */
@@ -195,6 +199,7 @@ export const tasksController = new Elysia({
         assigneeId,
         repeat,
         repeatEvery,
+        repeatDays,
         repeatStart,
         repeatTime,
         doneDates,
@@ -219,11 +224,13 @@ export const tasksController = new Elysia({
       const repeating =
         repeat !== undefined ||
         repeatEvery !== undefined ||
+        repeatDays !== undefined ||
         repeatStart !== undefined ||
         repeatTime !== undefined
           ? repeatFields({
               repeat: repeat ?? task.repeat,
               repeatEvery: repeatEvery ?? task.repeatEvery,
+              repeatDays: repeatDays ?? task.repeatDays,
               repeatStart:
                 repeatStart !== undefined ? repeatStart : task.repeatStart,
               repeatTime:

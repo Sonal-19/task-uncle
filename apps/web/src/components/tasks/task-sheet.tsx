@@ -38,7 +38,10 @@ import {
   type TaskReminder,
   type TaskRepeat,
   type TaskStatus,
+  WEEK_ORDER,
+  WEEKDAYS,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { useSheets } from "@/stores/sheet-store";
 
 type Form = {
@@ -58,6 +61,8 @@ type Form = {
   repeatPreset: RepeatPreset;
   repeatUnit: Exclude<TaskRepeat, "off">;
   repeatEvery: string;
+  /** Weekdays (0 = Sun) of a weekly routine; empty = the start's. */
+  repeatDays: number[];
   /** First occurrence (yyyy-MM-dd). */
   repeatStart: string;
   /** "HH:mm" of the routine's reminder. */
@@ -98,6 +103,7 @@ export function TaskSheet() {
         repeatPreset: presetOf(editing),
         repeatUnit: editing.repeat === "off" ? "daily" : editing.repeat,
         repeatEvery: String(editing.repeatEvery || 1),
+        repeatDays: editing.repeatDays,
         repeatStart:
           editing.repeat === "off" ? todayStr() : routineStart(editing),
         repeatTime: editing.repeatTime ?? "",
@@ -147,6 +153,7 @@ export function TaskSheet() {
       dueTime: !routine && f.dueDate && f.dueTime ? f.dueTime : null,
       repeat: routine ? r.repeat : "off",
       repeatEvery: routine ? r.repeatEvery : 1,
+      repeatDays: routine ? r.repeatDays : [],
       repeatStart: routine ? f.repeatStart || todayStr() : null,
       repeatTime: routine ? f.repeatTime : null,
       assigneeId: f.assigneeId || null,
@@ -291,6 +298,14 @@ export function TaskSheet() {
                     />
                   </Field>
                 </div>
+              )}
+              {r.repeat === "weekly" && f.repeatPreset !== "weekdays" && (
+                <Field label="On these days" required>
+                  <WeekdayPicker
+                    value={r.repeatDays}
+                    onChange={(v) => set("repeatDays", v)}
+                  />
+                </Field>
               )}
               <div className="grid grid-cols-[1fr_8.5rem] gap-3">
                 <Field label="Starts on" htmlFor="t-rstart" required>
@@ -532,6 +547,7 @@ function blank(): Form {
     repeatPreset: "off",
     repeatUnit: "daily",
     repeatEvery: "1",
+    repeatDays: [],
     repeatStart: todayStr(),
     repeatTime: "",
     notes: "",
@@ -539,44 +555,117 @@ function blank(): Form {
   };
 }
 
-type RepeatPreset = "off" | "day" | "week" | "15days" | "month" | "custom";
+type RepeatPreset =
+  | "off"
+  | "day"
+  | "week"
+  | "weekdays"
+  | "15days"
+  | "month"
+  | "custom";
 
 const REPEAT_PRESETS: { value: RepeatPreset; label: string }[] = [
   { value: "off", label: "Once" },
   { value: "day", label: "Every day" },
   { value: "week", label: "Every week" },
+  { value: "weekdays", label: "Every weekday (Mon–Fri)" },
   { value: "15days", label: "Every 15 days" },
   { value: "month", label: "Every month" },
   { value: "custom", label: "Custom…" },
 ];
 
+const MON_FRI = [1, 2, 3, 4, 5];
+
 const PRESET_REPEAT: Record<
   Exclude<RepeatPreset, "off" | "custom">,
-  { repeat: Exclude<TaskRepeat, "off">; repeatEvery: number }
+  {
+    repeat: Exclude<TaskRepeat, "off">;
+    repeatEvery: number;
+    repeatDays?: number[];
+  }
 > = {
   day: { repeat: "daily", repeatEvery: 1 },
   week: { repeat: "weekly", repeatEvery: 1 },
+  weekdays: { repeat: "weekly", repeatEvery: 1, repeatDays: MON_FRI },
   "15days": { repeat: "daily", repeatEvery: 15 },
   month: { repeat: "monthly", repeatEvery: 1 },
 };
 
 /** The preset a saved routine matches (else custom). */
-function presetOf(t: Pick<Task, "repeat" | "repeatEvery">): RepeatPreset {
+function presetOf(
+  t: Pick<Task, "repeat" | "repeatEvery" | "repeatDays">,
+): RepeatPreset {
   if (t.repeat === "off") return "off";
+  if (t.repeat === "weekly" && t.repeatEvery === 1)
+    return t.repeatDays.join() === MON_FRI.join() ? "weekdays" : "week";
   const hit = Object.entries(PRESET_REPEAT).find(
     ([, r]) => r.repeat === t.repeat && r.repeatEvery === t.repeatEvery,
   );
   return (hit?.[0] as RepeatPreset | undefined) ?? "custom";
 }
 
-/** The form's repeat as the task's unit + count. */
+/** 0 = Sun … 6 = Sat of a yyyy-MM-dd. */
+const weekdayOfDate = (ymd: string) => new Date(`${ymd}T00:00:00Z`).getUTCDay();
+
+/** The form's repeat as the task's unit + count (+ weekdays). A weekly one
+ * with no days picked yet falls on the start's weekday. */
 function repeatOf(f: Form) {
-  if (f.repeatPreset === "off" || f.repeatPreset === "custom")
-    return {
-      repeat: f.repeatUnit,
-      repeatEvery: Math.trunc(Number(f.repeatEvery)) || 0,
-    };
-  return PRESET_REPEAT[f.repeatPreset];
+  const base =
+    f.repeatPreset === "off" || f.repeatPreset === "custom"
+      ? {
+          repeat: f.repeatUnit,
+          repeatEvery: Math.trunc(Number(f.repeatEvery)) || 0,
+        }
+      : PRESET_REPEAT[f.repeatPreset];
+  const repeatDays =
+    base.repeat !== "weekly"
+      ? []
+      : ("repeatDays" in base && base.repeatDays) ||
+        (f.repeatDays.length
+          ? f.repeatDays
+          : [weekdayOfDate(f.repeatStart || todayStr())]);
+  return { repeat: base.repeat, repeatEvery: base.repeatEvery, repeatDays };
+}
+
+/** Mon … Sun toggles; at least one stays on. */
+function WeekdayPicker({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (days: number[]) => void;
+}) {
+  return (
+    <div className="grid grid-cols-7 gap-1.5">
+      {WEEK_ORDER.map((d) => {
+        const on = value.includes(d);
+        return (
+          <button
+            key={d}
+            type="button"
+            aria-pressed={on}
+            aria-label={WEEKDAYS[d]}
+            onClick={() => {
+              if (on && value.length === 1) return;
+              onChange(
+                on
+                  ? value.filter((x) => x !== d)
+                  : [...value, d].sort((a, b) => a - b),
+              );
+            }}
+            className={cn(
+              "h-10 rounded-lg border text-xs font-semibold transition-colors md:h-9",
+              on
+                ? "border-primary bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:border-primary hover:bg-primary/10",
+            )}
+          >
+            {WEEKDAYS[d]}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 /** A task's repeat as text: "Every 2 h", "As in settings", "Off". */

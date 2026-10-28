@@ -47,6 +47,7 @@ export type TaskPatch = Partial<
     | "reminderMinutes"
     | "repeat"
     | "repeatEvery"
+    | "repeatDays"
     | "repeatStart"
     | "repeatTime"
     | "doneDates"

@@ -48,6 +48,7 @@ export type TaskInput = Pick<
   | "reminderMinutes"
   | "repeat"
   | "repeatEvery"
+  | "repeatDays"
   | "repeatStart"
   | "repeatTime"
 > & { status?: TaskStatus };

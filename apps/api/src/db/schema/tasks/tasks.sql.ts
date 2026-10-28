@@ -49,6 +49,8 @@ export const tasksTable = pgTable(
     repeat: taskRepeatEnum("repeat").notNull().default("off"),
     /** Every how many days / weeks / months. */
     repeatEvery: pg.integer("repeat_every").notNull().default(1),
+    /** Weekdays (0 = Sun) of a weekly routine; empty = the start's. */
+    repeatDays: pg.jsonb("repeat_days").$type<number[]>().notNull().default([]),
     /** `yyyy-MM-dd` of the first occurrence (null = the created day). */
     repeatStart: pg.text("repeat_start"),
     /** "HH:mm", with a repeat. */

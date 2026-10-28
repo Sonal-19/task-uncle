@@ -112,6 +112,9 @@ export type Task = {
   repeat: TaskRepeat;
   /** Every how many days / weeks / months (1 with repeat = off). */
   repeatEvery: number;
+  /** Weekdays (0 = Sun … 6 = Sat) a weekly routine falls on, sorted; empty
+   * = the weekday of `repeatStart`. Always empty for other repeats. */
+  repeatDays: number[];
   /** `yyyy-MM-dd` of the first occurrence; sets the weekday / day of the
    * month. Null = the day it was created. */
   repeatStart: string | null;
@@ -271,7 +274,7 @@ export const REPEAT_EVERY_MAX = 366;
 
 type RepeatFields = Pick<
   Task,
-  "repeat" | "repeatEvery" | "repeatStart" | "repeatTime"
+  "repeat" | "repeatEvery" | "repeatDays" | "repeatStart" | "repeatTime"
 >;
 
 /** A routine only with a time; its every / start / time only with a repeat.
@@ -282,13 +285,21 @@ export function repeatFields(r: Partial<RepeatFields>): RepeatFields {
     return {
       repeat: "off",
       repeatEvery: 1,
+      repeatDays: [],
       repeatStart: null,
       repeatTime: null,
     };
   const every = Math.trunc(Number(r.repeatEvery ?? 1)) || 1;
+  const days =
+    repeat === "weekly" && Array.isArray(r.repeatDays)
+      ? [...new Set(r.repeatDays)]
+          .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+          .sort((a, b) => a - b)
+      : [];
   return {
     repeat,
     repeatEvery: Math.min(Math.max(every, 1), REPEAT_EVERY_MAX),
+    repeatDays: days,
     repeatStart: r.repeatStart ?? null,
     repeatTime: r.repeatTime,
   };
@@ -297,12 +308,14 @@ export function repeatFields(r: Partial<RepeatFields>): RepeatFields {
 /* ------------------------------ routines ------------------------------ */
 // A routine comes back on its occurrences: `repeatStart`, then every
 // `repeatEvery` days / weeks / months (a monthly one on the 31st falls on
-// the last day of shorter months). An occurrence stays open until it is
+// the last day of shorter months). A weekly one with `repeatDays` falls on
+// each of those weekdays, every `repeatEvery` weeks (weeks start on Monday,
+// counted from the start's week). An occurrence stays open until it is
 // ticked off or the next one comes.
 
 type RoutineShape = Pick<
   Task,
-  "repeat" | "repeatEvery" | "repeatStart" | "createdAt"
+  "repeat" | "repeatEvery" | "repeatDays" | "repeatStart" | "createdAt"
 >;
 
 const ymdParts = (ymd: string) => {
@@ -315,6 +328,51 @@ const dayNumber = (ymd: string) => {
   const { y, m, d } = ymdParts(ymd);
   return Date.UTC(y, m - 1, d) / 86_400_000;
 };
+
+const fromNumber = (n: number) =>
+  new Date(n * 86_400_000).toISOString().slice(0, 10);
+/** 0 = Sun … 6 = Sat (day 0 of the epoch was a Thursday). */
+const weekdayOf = (n: number) => (((n + 4) % 7) + 7) % 7;
+const mondayOf = (n: number) => n - ((weekdayOf(n) + 6) % 7);
+
+/** The weekdays of a weekly routine on several days, else null. */
+const multiDays = (t: RoutineShape) =>
+  t.repeat === "weekly" && t.repeatDays?.length ? t.repeatDays : null;
+
+/** A multi-day weekly routine's latest occurrence on or before `day`. */
+function multiOn(t: RoutineShape, days: number[], day: string) {
+  const start = dayNumber(routineStart(t));
+  const d = dayNumber(day);
+  if (d < start) return null;
+  const anchor = mondayOf(start);
+  const span = stepOf(t) * 7;
+  for (
+    let wk = anchor + Math.floor((mondayOf(d) - anchor) / span) * span;
+    wk >= anchor;
+    wk -= span
+  )
+    for (let i = 6; i >= 0; i--) {
+      const x = wk + i;
+      if (x <= d && x >= start && days.includes(weekdayOf(x)))
+        return fromNumber(x);
+    }
+  return null;
+}
+
+/** A multi-day weekly routine's first occurrence after `day`. */
+function multiNext(t: RoutineShape, days: number[], day: string) {
+  const start = dayNumber(routineStart(t));
+  const d = Math.max(dayNumber(day) + 1, start);
+  const anchor = mondayOf(start);
+  const span = stepOf(t) * 7;
+  let wk = anchor + Math.floor((mondayOf(d) - anchor) / span) * span;
+  // `days` is never empty, so this ends within two active weeks.
+  for (; ; wk += span)
+    for (let i = 0; i < 7; i++) {
+      const x = wk + i;
+      if (x >= d && days.includes(weekdayOf(x))) return fromNumber(x);
+    }
+}
 
 /** The first occurrence of a routine. */
 export const routineStart = (t: Pick<Task, "repeatStart" | "createdAt">) =>
@@ -354,18 +412,33 @@ function indexOn(t: RoutineShape, day: string) {
 
 /** The occurrence `day` belongs to (null before the routine starts). */
 export function occurrenceOn(t: RoutineShape, day: string) {
+  const days = multiDays(t);
+  if (days) return multiOn(t, days, day);
   const k = indexOn(t, day);
   return k < 0 ? null : occurrence(t, k);
 }
 
 /** The first occurrence after `day`. */
-export const nextOccurrence = (t: RoutineShape, day: string) =>
-  occurrence(t, indexOn(t, day) + 1);
+export function nextOccurrence(t: RoutineShape, day: string) {
+  const days = multiDays(t);
+  if (days) return multiNext(t, days, day);
+  return occurrence(t, indexOn(t, day) + 1);
+}
 
 /** The `n` latest occurrences up to `day`'s, newest first. */
 export function occurrencesUpTo(t: RoutineShape, day: string, n: number) {
-  const k = indexOn(t, day);
   const out: string[] = [];
+  const days = multiDays(t);
+  if (days) {
+    for (
+      let occ = multiOn(t, days, day);
+      occ && out.length < n;
+      occ = multiOn(t, days, fromNumber(dayNumber(occ) - 1))
+    )
+      out.push(occ);
+    return out;
+  }
+  const k = indexOn(t, day);
   for (let i = k; i >= 0 && out.length < n; i--) out.push(occurrence(t, i));
   return out;
 }
@@ -375,24 +448,35 @@ export function occurrencesUpTo(t: RoutineShape, day: string, n: number) {
 export const routineDay = (t: RoutineShape, today: string) =>
   occurrenceOn(t, today) ?? routineStart(t);
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** Weekday numbers in the order a week is shown (Monday first). */
+export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+/** "Mon, Wed, Fri" / "Mon–Fri" (Monday first). */
+export function weekdaysLabel(days: number[]) {
+  const sorted = WEEK_ORDER.filter((d) => days.includes(d));
+  if (sorted.join() === "1,2,3,4,5") return "Mon–Fri";
+  if (sorted.length === 7) return "every day";
+  return sorted.map((d) => WEEKDAYS[d]).join(", ");
+}
 const ordinal = (n: number) => {
   const v = n % 100;
   if (v >= 11 && v <= 13) return `${n}th`;
   return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 };
 
-/** "Every day", "Every 15 days", "Every week on Mon", "Every 2 weeks on
- * Mon", "Every month on the 5th", "Every 3 months on the 31st". */
-export function routineLabel(
-  t: Pick<Task, "repeat" | "repeatEvery" | "repeatStart" | "createdAt">,
-) {
+/** "Every day", "Every 15 days", "Every week on Mon", "Every weekday",
+ * "Every 2 weeks on Mon, Thu", "Every month on the 5th", "Every 3 months on
+ * the 31st". */
+export function routineLabel(t: RoutineShape) {
   const n = stepOf(t);
   const start = ymdParts(routineStart(t));
   if (t.repeat === "weekly") {
-    const wd =
-      WEEKDAYS[new Date(Date.UTC(start.y, start.m - 1, start.d)).getUTCDay()];
-    return `Every ${n === 1 ? "week" : `${n} weeks`} on ${wd}`;
+    const days = multiDays(t) ?? [weekdayOf(dayNumber(routineStart(t)))];
+    const on = weekdaysLabel(days);
+    if (n === 1 && on === "Mon–Fri") return "Every weekday";
+    if (n === 1 && days.length === 7) return "Every day";
+    return `Every ${n === 1 ? "week" : `${n} weeks`} on ${on}`;
   }
   if (t.repeat === "monthly")
     return `Every ${n === 1 ? "month" : `${n} months`} on the ${ordinal(start.d)}`;

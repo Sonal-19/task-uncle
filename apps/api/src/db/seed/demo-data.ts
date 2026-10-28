@@ -149,6 +149,7 @@ export function buildSeed(now = new Date()): DataState {
     reminderMinutes: null,
     repeat: "off",
     repeatEvery: 1,
+    repeatDays: [],
     repeatStart: null,
     repeatTime: null,
     doneDates: [],
@@ -303,7 +304,14 @@ export function buildSeed(now = new Date()): DataState {
       doneDates: [day(-4), day(-3), day(-1)],
       notes: "One problem a day keeps the interviewer away.",
     }),
-    // Routines: weekly, every 15 days and monthly.
+    // Routines: weekly, on weekdays, every 15 days and monthly.
+    task("t31", "c-home", "Morning walk", {
+      dueDate: null,
+      repeat: "weekly",
+      repeatDays: [1, 3, 5],
+      repeatStart: day(-14),
+      repeatTime: "06:30",
+    }),
     task("t28", "c-home", "Water the plants", {
       dueDate: null,
       repeat: "weekly",

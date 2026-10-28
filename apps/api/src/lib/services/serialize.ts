@@ -74,6 +74,7 @@ export const taskOut = (t: SelectTask): Task => ({
   reminderMinutes: t.reminder === "custom" ? t.reminderMinutes : null,
   repeat: t.repeat,
   repeatEvery: t.repeat === "off" ? 1 : t.repeatEvery,
+  repeatDays: t.repeat === "weekly" ? t.repeatDays : [],
   repeatStart: t.repeat === "off" ? null : t.repeatStart,
   repeatTime: t.repeat === "off" ? null : t.repeatTime,
   doneDates: t.doneDates,

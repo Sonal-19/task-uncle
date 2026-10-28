@@ -150,7 +150,7 @@ export function streakOf(t: Task) {
 export function streakUnit(t: Task, n: number) {
   const unit = isEveryDay(t)
     ? "day"
-    : t.repeat === "weekly" && t.repeatEvery === 1
+    : t.repeat === "weekly" && t.repeatEvery === 1 && t.repeatDays.length < 2
       ? "week"
       : t.repeat === "monthly" && t.repeatEvery === 1
         ? "month"
