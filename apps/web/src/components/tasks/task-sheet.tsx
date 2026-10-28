@@ -22,12 +22,15 @@ import {
   useSettings,
   useUpdateTask,
 } from "@/hooks/use-data";
-import { fromAmount, toAmount, todayStr, uid } from "@/lib/format";
+import { formatTime, fromAmount, toAmount, todayStr, uid } from "@/lib/format";
 import {
   everyLabel,
   INTERVALS,
   PRIORITIES,
   type Priority,
+  REPEAT_EVERY_MAX,
+  routineLabel,
+  routineStart,
   STATUSES,
   type Subtask,
   settingsLabel,
@@ -51,8 +54,13 @@ type Form = {
   reminder: TaskReminder;
   /** Repeat for `reminder` = custom. */
   reminderMinutes: number;
-  repeat: TaskRepeat;
-  /** "HH:mm" of the daily reminder. */
+  /** How it repeats; `custom` uses `repeatUnit` + `repeatEvery`. */
+  repeatPreset: RepeatPreset;
+  repeatUnit: Exclude<TaskRepeat, "off">;
+  repeatEvery: string;
+  /** First occurrence (yyyy-MM-dd). */
+  repeatStart: string;
+  /** "HH:mm" of the routine's reminder. */
   repeatTime: string;
   notes: string;
   subtasks: Subtask[];
@@ -87,7 +95,11 @@ export function TaskSheet() {
         amount: editing.amount ? String(fromAmount(editing.amount)) : "",
         reminder: editing.reminder,
         reminderMinutes: editing.reminderMinutes ?? 120,
-        repeat: editing.repeat,
+        repeatPreset: presetOf(editing),
+        repeatUnit: editing.repeat === "off" ? "daily" : editing.repeat,
+        repeatEvery: String(editing.repeatEvery || 1),
+        repeatStart:
+          editing.repeat === "off" ? todayStr() : routineStart(editing),
         repeatTime: editing.repeatTime ?? "",
         notes: editing.notes,
         subtasks: editing.subtasks,
@@ -122,18 +134,21 @@ export function TaskSheet() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    // A daily task has no due date: it comes back every day.
-    const daily = f.repeat === "daily";
+    // A routine has no due date: it comes back on its own days.
+    const routine = f.repeatPreset !== "off";
+    const r = repeatOf(f);
     const body: TaskInput = {
       title: f.title.trim(),
       eventId: f.eventId || null,
       categoryId: f.categoryId || null,
-      status: daily ? "pending" : f.status,
+      status: routine ? "pending" : f.status,
       priority: f.priority,
-      dueDate: daily ? null : f.dueDate || null,
-      dueTime: !daily && f.dueDate && f.dueTime ? f.dueTime : null,
-      repeat: daily ? "daily" : "off",
-      repeatTime: daily ? f.repeatTime : null,
+      dueDate: routine ? null : f.dueDate || null,
+      dueTime: !routine && f.dueDate && f.dueTime ? f.dueTime : null,
+      repeat: routine ? r.repeat : "off",
+      repeatEvery: routine ? r.repeatEvery : 1,
+      repeatStart: routine ? f.repeatStart || todayStr() : null,
+      repeatTime: routine ? f.repeatTime : null,
       assigneeId: f.assigneeId || null,
       amount: f.amount ? toAmount(Number(f.amount)) : null,
       reminder: f.reminder,
@@ -149,7 +164,20 @@ export function TaskSheet() {
   }
 
   const busy = create.isPending || update.isPending;
-  const daily = f.repeat === "daily";
+  const routine = f.repeatPreset !== "off";
+  const r = repeatOf(f);
+  const everyOk =
+    r.repeatEvery >= 1 &&
+    r.repeatEvery <= REPEAT_EVERY_MAX &&
+    Number.isInteger(Number(f.repeatEvery));
+  const routineText =
+    routine && everyOk
+      ? `${routineLabel({
+          ...r,
+          repeatStart: f.repeatStart || todayStr(),
+          createdAt: "",
+        })}${f.repeatTime ? ` at ${formatTime(f.repeatTime)}` : ""}`
+      : "";
 
   return (
     <ResponsiveSheet
@@ -159,8 +187,8 @@ export function TaskSheet() {
       description={
         editing
           ? undefined
-          : daily
-            ? "Uncle reminds you every day until you turn the repeat off."
+          : routine
+            ? "A routine: Uncle reminds you each time it comes back until you turn the repeat off."
             : "Uncle will keep reminding you until it's done."
       }
     >
@@ -214,38 +242,84 @@ export function TaskSheet() {
             </Field>
           </div>
 
-          <Field label="Repeat">
-            <Segmented<TaskRepeat>
-              className="flex w-full"
-              value={f.repeat}
-              onChange={(repeat) =>
+          <Field label="Repeat" htmlFor="t-repeat">
+            <SelectField<RepeatPreset>
+              id="t-repeat"
+              value={f.repeatPreset}
+              onChange={(repeatPreset) =>
                 setF((p) => ({
                   ...p,
-                  repeat,
+                  repeatPreset,
                   repeatTime: p.repeatTime || p.dueTime || "09:00",
+                  // A routine starts where the due date was.
+                  repeatStart:
+                    p.repeatPreset === "off" && p.dueDate
+                      ? p.dueDate
+                      : p.repeatStart || todayStr(),
                 }))
               }
-              options={[
-                { value: "off", label: "Once" },
-                { value: "daily", label: "Every day" },
-              ]}
+              options={REPEAT_PRESETS}
             />
           </Field>
 
-          {daily ? (
-            <Field
-              label="Remind me every day at"
-              htmlFor="t-rtime"
-              required
-              hint="One reminder a day at this time. Tick off each day when it's done; it keeps coming until you set Repeat back to Once."
-            >
-              <TimeInput
-                id="t-rtime"
-                placeholder="Pick a time"
-                value={f.repeatTime}
-                onChange={(v) => set("repeatTime", v)}
-              />
-            </Field>
+          {routine ? (
+            <>
+              {f.repeatPreset === "custom" && (
+                <div className="grid grid-cols-[6rem_1fr] gap-3">
+                  <Field label="Every" htmlFor="t-every" required>
+                    <Input
+                      id="t-every"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={REPEAT_EVERY_MAX}
+                      step={1}
+                      value={f.repeatEvery}
+                      onChange={(e) => set("repeatEvery", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Unit" htmlFor="t-unit">
+                    <SelectField<Exclude<TaskRepeat, "off">>
+                      id="t-unit"
+                      value={f.repeatUnit}
+                      onChange={(v) => set("repeatUnit", v)}
+                      options={[
+                        { value: "daily", label: "Days" },
+                        { value: "weekly", label: "Weeks" },
+                        { value: "monthly", label: "Months" },
+                      ]}
+                    />
+                  </Field>
+                </div>
+              )}
+              <div className="grid grid-cols-[1fr_8.5rem] gap-3">
+                <Field label="Starts on" htmlFor="t-rstart" required>
+                  <DateInput
+                    id="t-rstart"
+                    value={f.repeatStart}
+                    onChange={(v) => set("repeatStart", v)}
+                  />
+                </Field>
+                <Field label="Remind at" htmlFor="t-rtime" required>
+                  <TimeInput
+                    id="t-rtime"
+                    placeholder="Pick a time"
+                    value={f.repeatTime}
+                    onChange={(v) => set("repeatTime", v)}
+                  />
+                </Field>
+              </div>
+              <p className="-mt-2 text-xs text-muted-foreground">
+                {routineText && (
+                  <span className="font-medium text-foreground">
+                    {routineText}.{" "}
+                  </span>
+                )}
+                Uncle reminds you on the day, then once a day at this time until
+                you tick it off. It keeps coming back until you set Repeat to
+                Once.
+              </p>
+            </>
           ) : (
             <div className="grid grid-cols-[1fr_8.5rem] gap-3">
               <Field label="Due date" htmlFor="t-date">
@@ -276,7 +350,7 @@ export function TaskSheet() {
             />
           </Field>
 
-          {editing && !daily && (
+          {editing && !routine && (
             <Field label="Status">
               <Segmented
                 className="flex w-full"
@@ -320,7 +394,7 @@ export function TaskSheet() {
             </Field>
           </div>
 
-          {!daily && (
+          {!routine && (
             <Field label="Remind me" htmlFor="t-rem">
               <SelectField<TaskReminder>
                 id="t-rem"
@@ -340,7 +414,7 @@ export function TaskSheet() {
               />
             </Field>
           )}
-          {!daily && f.reminder === "custom" && (
+          {!routine && f.reminder === "custom" && (
             <DurationPicker
               // Fresh drafts each time the sheet opens.
               key={`${open}-${editing?.id ?? "new"}`}
@@ -427,8 +501,8 @@ export function TaskSheet() {
               disabled={
                 busy ||
                 !f.title.trim() ||
-                (daily && !f.repeatTime) ||
-                (!daily &&
+                (routine && (!f.repeatTime || !f.repeatStart || !everyOk)) ||
+                (!routine &&
                   f.reminder === "custom" &&
                   !validRepeat(f.reminderMinutes))
               }
@@ -455,11 +529,54 @@ function blank(): Form {
     amount: "",
     reminder: "inherit",
     reminderMinutes: 120,
-    repeat: "off",
+    repeatPreset: "off",
+    repeatUnit: "daily",
+    repeatEvery: "1",
+    repeatStart: todayStr(),
     repeatTime: "",
     notes: "",
     subtasks: [],
   };
+}
+
+type RepeatPreset = "off" | "day" | "week" | "15days" | "month" | "custom";
+
+const REPEAT_PRESETS: { value: RepeatPreset; label: string }[] = [
+  { value: "off", label: "Once" },
+  { value: "day", label: "Every day" },
+  { value: "week", label: "Every week" },
+  { value: "15days", label: "Every 15 days" },
+  { value: "month", label: "Every month" },
+  { value: "custom", label: "Custom…" },
+];
+
+const PRESET_REPEAT: Record<
+  Exclude<RepeatPreset, "off" | "custom">,
+  { repeat: Exclude<TaskRepeat, "off">; repeatEvery: number }
+> = {
+  day: { repeat: "daily", repeatEvery: 1 },
+  week: { repeat: "weekly", repeatEvery: 1 },
+  "15days": { repeat: "daily", repeatEvery: 15 },
+  month: { repeat: "monthly", repeatEvery: 1 },
+};
+
+/** The preset a saved routine matches (else custom). */
+function presetOf(t: Pick<Task, "repeat" | "repeatEvery">): RepeatPreset {
+  if (t.repeat === "off") return "off";
+  const hit = Object.entries(PRESET_REPEAT).find(
+    ([, r]) => r.repeat === t.repeat && r.repeatEvery === t.repeatEvery,
+  );
+  return (hit?.[0] as RepeatPreset | undefined) ?? "custom";
+}
+
+/** The form's repeat as the task's unit + count. */
+function repeatOf(f: Form) {
+  if (f.repeatPreset === "off" || f.repeatPreset === "custom")
+    return {
+      repeat: f.repeatUnit,
+      repeatEvery: Math.trunc(Number(f.repeatEvery)) || 0,
+    };
+  return PRESET_REPEAT[f.repeatPreset];
 }
 
 /** A task's repeat as text: "Every 2 h", "As in settings", "Off". */

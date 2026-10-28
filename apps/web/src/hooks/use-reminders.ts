@@ -13,7 +13,7 @@ import {
 } from "@/hooks/use-data";
 import { queryClient as qc } from "@/integrations/tanstack-query/root-provider";
 import { fetchers } from "@/lib/fetchers";
-import { shortDate, todayStr } from "@/lib/format";
+import { routineNow, shortDate } from "@/lib/format";
 import { useOutbox } from "@/lib/offline/outbox";
 import { refresh } from "@/lib/offline/sync";
 import type { PushConfig } from "@/lib/push";
@@ -22,7 +22,7 @@ import { permission, showNotification } from "@/lib/reminders/notify";
 import { nextReminderAt, planReminders } from "@/lib/reminders/reminder-engine";
 import {
   type Category,
-  isDaily,
+  isRoutine,
   type Settings,
   type Task,
   type TaskEvent,
@@ -252,8 +252,8 @@ export function useReminders() {
   }, [navigate]);
 }
 
-/** "done" / "snooze" from a notification button. A daily task's "done"
- * ticks off the reminder's day (today when it doesn't say). */
+/** "done" / "snooze" from a notification button. A routine's "done" ticks
+ * off the reminder's occurrence (the current one when it doesn't say). */
 export function applyTaskAction(
   taskId: string,
   action?: string,
@@ -263,8 +263,8 @@ export function applyTaskAction(
     .getQueryData<Task[]>(keys.tasks)
     ?.find((t) => t.id === taskId);
   if (!task) return;
-  if (action === "done" && isDaily(task)) {
-    const date = day ?? todayStr();
+  if (action === "done" && isRoutine(task)) {
+    const date = day ?? routineNow(task);
     setTaskDay(taskId, date, true);
     toast.success(`Done for ${shortDate(date)}`, { description: task.title });
   } else if (action === "done") {

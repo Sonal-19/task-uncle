@@ -50,19 +50,29 @@ import {
   useUpdateTask,
 } from "@/hooks/use-data";
 import {
-  doneToday,
+  doneNow,
   formatAmount,
   formatDateTime,
   formatDue,
   formatUpcoming,
+  isEveryDay,
   isOverdue,
   lastDays,
   parseDay,
+  routineLate,
+  routineNow,
+  routineStatus,
   streakOf,
+  streakUnit,
   todayStr,
 } from "@/lib/format";
 import { nextReminderAt } from "@/lib/reminders/reminder-engine";
-import { isDaily, type Task } from "@/lib/types";
+import {
+  isRoutine,
+  occurrencesUpTo,
+  routineLabel,
+  type Task,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSheets } from "@/stores/sheet-store";
 import { reminderLabel } from "./task-sheet";
@@ -95,8 +105,10 @@ export function TaskDetailSheet() {
   const cat = task.categoryId ? categoryById.get(task.categoryId) : undefined;
   const who = task.assigneeId ? personById.get(task.assigneeId) : undefined;
   const done = task.status === "done";
-  const daily = isDaily(task) && !done;
-  const today = daily && doneToday(task);
+  const daily = isRoutine(task) && !done;
+  const today = daily && doneNow(task);
+  const when = isEveryDay(task) ? "today" : "this time";
+  const routineText = daily ? routineStatus(task) : null;
   const overdue = isOverdue(task);
   const next = settings ? nextReminderAt(task, settings) : null;
   const snoozed =
@@ -128,12 +140,26 @@ export function TaskDetailSheet() {
         <div className="flex flex-wrap items-center gap-2">
           {daily ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-              <Repeat className="size-3.5" /> Every day
+              <Repeat className="size-3.5" /> {routineLabel(task)}
             </span>
           ) : (
             <StatusBadge status={overdue ? "overdue" : task.status} />
           )}
           <PriorityFlag priority={task.priority} withLabel />
+          {routineText && (
+            <span
+              className={cn(
+                "text-xs font-medium",
+                today
+                  ? "text-done"
+                  : routineLate(task) > 0
+                    ? "text-overdue"
+                    : "text-muted-foreground",
+              )}
+            >
+              {routineText}
+            </span>
+          )}
           {snoozed && (
             <span className="text-xs font-medium text-pending">
               Snoozed till {formatDateTime(task.snoozedUntil!)}
@@ -309,21 +335,25 @@ export function TaskDetailSheet() {
                   onClick={() =>
                     setDay.mutate({
                       id: task.id,
-                      date: todayStr(),
+                      date: routineNow(task),
                       done: false,
                     })
                   }
                 >
-                  <RotateCcw /> Not done today
+                  <RotateCcw /> Not done {when}
                 </Button>
               ) : (
                 <Button
                   className="col-span-2 bg-done text-white hover:bg-done/90 dark:text-emerald-950"
                   onClick={() =>
-                    setDay.mutate({ id: task.id, date: todayStr(), done: true })
+                    setDay.mutate({
+                      id: task.id,
+                      date: routineNow(task),
+                      done: true,
+                    })
                   }
                 >
-                  <CheckCircle2 /> Done for today
+                  <CheckCircle2 /> Done for {when}
                 </Button>
               )}
               <Button
@@ -396,6 +426,20 @@ export function TaskDetailSheet() {
                   >
                     Tomorrow 9 AM
                   </DropdownMenuItem>
+                  {routineText && (
+                    <span
+                      className={cn(
+                        "text-xs font-medium",
+                        today
+                          ? "text-done"
+                          : routineLate(task) > 0
+                            ? "text-overdue"
+                            : "text-muted-foreground",
+                      )}
+                    >
+                      {routineText}
+                    </span>
+                  )}
                   {snoozed && (
                     <DropdownMenuItem
                       onClick={() =>
@@ -432,8 +476,10 @@ export function TaskDetailSheet() {
 }
 
 const HISTORY_DAYS = 14;
+const HISTORY_TIMES = 8;
 
-/** The last two weeks of a daily task, each day tickable (oldest left). */
+/** A routine's recent occurrences, each tickable (oldest left): the last
+ * two weeks for an every-day routine, else the last few times. */
 function DayHistory({
   task,
   onToggle,
@@ -442,30 +488,37 @@ function DayHistory({
   onToggle: (date: string, done: boolean) => void;
 }) {
   const done = new Set(task.doneDates);
-  // Never before the task existed.
+  const everyDay = isEveryDay(task);
+  // Never before the task existed (or its first occurrence).
   const since = format(parseISO(task.createdAt), "yyyy-MM-dd");
-  const days = lastDays(HISTORY_DAYS)
-    .filter((d) => d >= since)
-    .reverse();
+  const days = (
+    everyDay
+      ? lastDays(HISTORY_DAYS).filter((d) => d >= since)
+      : occurrencesUpTo(task, routineNow(task), HISTORY_TIMES)
+  ).reverse();
+  const current = routineNow(task);
   const streak = streakOf(task);
   const count = days.filter((d) => done.has(d)).length;
+  const top = task.repeat === "monthly" ? "MMM" : "EEE";
   return (
     <div>
       <div className="mb-2 flex items-center justify-between text-sm">
         <p className="font-semibold">
-          Every day · {count}/{days.length}
+          {everyDay ? "Last 2 weeks" : `Last ${days.length} times`} · {count}/
+          {days.length}
         </p>
         {streak > 0 && (
           <span className="flex items-center gap-1 font-semibold text-orange-500">
-            <Flame className="size-4" /> {streak} day{streak === 1 ? "" : "s"}{" "}
-            in a row
+            <Flame className="size-4" /> {streakUnit(task, streak)} in a row
           </span>
         )}
       </div>
-      <div className="grid grid-cols-7 gap-1.5">
+      <div
+        className={cn("grid gap-1.5", everyDay ? "grid-cols-7" : "grid-cols-4")}
+      >
         {days.map((d) => {
           const on = done.has(d);
-          const isToday = d === todayStr();
+          const isNow = d === current;
           return (
             <button
               key={d}
@@ -478,13 +531,17 @@ function DayHistory({
                 on
                   ? "border-done bg-done text-white"
                   : "hover:border-primary hover:bg-primary/10",
-                isToday && !on && "border-primary",
+                isNow && !on && "border-primary",
               )}
             >
               <span
                 className={cn("text-[10px]", !on && "text-muted-foreground")}
               >
-                {isToday ? "Today" : format(parseDay(d), "EEE")}
+                {d === todayStr()
+                  ? "Today"
+                  : isNow
+                    ? "Now"
+                    : format(parseDay(d), top)}
               </span>
               <span className="font-semibold tabular">
                 {format(parseDay(d), "d MMM")}

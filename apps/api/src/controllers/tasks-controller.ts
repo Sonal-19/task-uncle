@@ -12,6 +12,8 @@ import {
   onOff,
   placeTask,
   priorities,
+  REPEAT_EVERY_MAX,
+  repeatFields,
   statusPatch,
   taskReminders,
   taskRepeats,
@@ -58,9 +60,13 @@ const taskBody = t.Object({
   ),
   /** Optional so ops queued by an older build still go through. */
   repeat: t.Optional(tEnum(taskRepeats)),
-  /** "HH:mm" of the daily reminder. */
+  /** Every how many days / weeks / months. */
+  repeatEvery: t.Optional(t.Integer({ minimum: 1, maximum: REPEAT_EVERY_MAX })),
+  /** The routine's first occurrence. */
+  repeatStart: t.Optional(t.Nullable(tDate)),
+  /** "HH:mm" of the routine's reminder. */
   repeatTime: t.Optional(t.Nullable(tTime)),
-  /** Days a daily task was done (the whole list, like `subtasks`). */
+  /** Occurrences a routine was done (the whole list, like `subtasks`). */
   doneDates: t.Optional(t.Array(tDate, { maxItems: DONE_DATES_MAX })),
 });
 
@@ -86,15 +92,6 @@ async function assignee(userId: number, id: string | null | undefined) {
 }
 
 const toDate = (s: string | null) => (s ? new Date(s) : null);
-
-/** Daily only with a time; the time only when daily. */
-function repeatOf(repeat: string | undefined, time: string | null | undefined) {
-  const daily = repeat === "daily" && !!time;
-  return {
-    repeat: daily ? ("daily" as const) : ("off" as const),
-    repeatTime: daily ? (time ?? null) : null,
-  };
-}
 
 const sortedDays = (days: string[]) =>
   days.reduce<string[]>((list, d) => checkDay(list, d, true), []);
@@ -161,7 +158,7 @@ export const tasksController = new Elysia({
           ...place,
           title: rest.title.trim(),
           dueTime: rest.dueDate ? rest.dueTime : null,
-          ...repeatOf(rest.repeat, rest.repeatTime),
+          ...repeatFields(rest),
           doneDates: sortedDays(rest.doneDates ?? []),
           assigneeId: await assignee(user.id, rest.assigneeId),
           status: s.status ?? "pending",
@@ -197,6 +194,8 @@ export const tasksController = new Elysia({
         snoozedUntil,
         assigneeId,
         repeat,
+        repeatEvery,
+        repeatStart,
         repeatTime,
         doneDates,
         tickDay,
@@ -218,11 +217,18 @@ export const tasksController = new Elysia({
         : {};
       const dueDate = rest.dueDate !== undefined ? rest.dueDate : task.dueDate;
       const repeating =
-        repeat !== undefined || repeatTime !== undefined
-          ? repeatOf(
-              repeat ?? task.repeat,
-              repeatTime !== undefined ? repeatTime : task.repeatTime,
-            )
+        repeat !== undefined ||
+        repeatEvery !== undefined ||
+        repeatStart !== undefined ||
+        repeatTime !== undefined
+          ? repeatFields({
+              repeat: repeat ?? task.repeat,
+              repeatEvery: repeatEvery ?? task.repeatEvery,
+              repeatStart:
+                repeatStart !== undefined ? repeatStart : task.repeatStart,
+              repeatTime:
+                repeatTime !== undefined ? repeatTime : task.repeatTime,
+            })
           : {};
       let days = doneDates && sortedDays(doneDates);
       if (tickDay)
@@ -264,7 +270,7 @@ export const tasksController = new Elysia({
         t.Object({
           ...extra,
           snoozedUntil: t.Optional(t.Nullable(tStamp)),
-          /** Ticks one day of a daily task (the service worker's "Mark
+          /** Ticks one occurrence of a routine (the service worker's "Mark
            * done", which doesn't know the list). */
           tickDay: t.Optional(t.Object({ date: tDate, done: tEnum(onOff) })),
           ...tSyncMeta,

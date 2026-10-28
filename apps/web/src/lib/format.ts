@@ -6,7 +6,15 @@ import {
   parseISO,
   subDays,
 } from "date-fns";
-import { isDaily, type Task } from "./types";
+import {
+  isRoutine,
+  nextOccurrence,
+  occurrencesUpTo,
+  routineDay,
+  routineLabel,
+  routineStart,
+  type Task,
+} from "./types";
 
 const inrFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -91,36 +99,88 @@ export function isOverdue(t: Task, now = new Date()) {
   return t.status !== "done" && !!d && d < now;
 }
 
-/** A daily task counts as due today until today is ticked off. */
+/** A routine counts as due today while its occurrence is open. */
 export const isDueToday = (t: Task) =>
   t.status !== "done" &&
-  (isDaily(t) ? !doneToday(t) : t.dueDate === todayStr());
+  (isRoutine(t) ? !doneNow(t) && !notStarted(t) : t.dueDate === todayStr());
 
-/** A daily task ticked off for today. */
-export const doneToday = (t: Task) =>
-  isDaily(t) && t.doneDates.includes(todayStr());
+/** The occurrence a routine's check ticks now (yyyy-MM-dd). */
+export const routineNow = (t: Task) => routineDay(t, todayStr());
+
+/** A routine whose current occurrence is ticked off. */
+export const doneNow = (t: Task) =>
+  isRoutine(t) && t.doneDates.includes(routineNow(t));
+
+/** A routine whose first occurrence is still ahead. */
+export const notStarted = (t: Task) =>
+  isRoutine(t) && routineStart(t) > todayStr();
+
+/** A routine's next occurrence after the current one. */
+export const nextRoutineDay = (t: Task) => nextOccurrence(t, routineNow(t));
+
+/** Days a routine's open occurrence has waited (0 = it came today). */
+export function routineLate(t: Task) {
+  if (!isRoutine(t) || doneNow(t) || notStarted(t)) return 0;
+  return differenceInCalendarDays(new Date(), parseDay(routineNow(t)));
+}
+
+/** A routine every single day (shown day by day). */
+export const isEveryDay = (t: Task) =>
+  t.repeat === "daily" && t.repeatEvery === 1;
 
 /** The last `n` days, today first (yyyy-MM-dd). */
 export const lastDays = (n: number, from = new Date()) =>
   Array.from({ length: n }, (_, i) => format(subDays(from, i), "yyyy-MM-dd"));
 
-/** Days in a row a daily task was done, up to today (today still open
- * doesn't break it). */
-export function streakOf(t: Pick<Task, "doneDates">) {
+/** Occurrences in a row a routine was done, up to the current one (which,
+ * still open, doesn't break it). */
+export function streakOf(t: Task) {
   const done = new Set(t.doneDates);
-  const days = lastDays(t.doneDates.length + 1);
-  if (!done.has(days[0]!)) days.shift();
+  const occ = occurrencesUpTo(t, todayStr(), t.doneDates.length + 1);
+  if (occ[0] && !done.has(occ[0])) occ.shift();
   let n = 0;
-  for (const d of days) {
+  for (const d of occ) {
     if (!done.has(d)) break;
     n++;
   }
   return n;
 }
 
+/** "day" / "week" / "month" a routine's streak counts in. */
+export function streakUnit(t: Task, n: number) {
+  const unit = isEveryDay(t)
+    ? "day"
+    : t.repeat === "weekly" && t.repeatEvery === 1
+      ? "week"
+      : t.repeat === "monthly" && t.repeatEvery === 1
+        ? "month"
+        : "time";
+  return `${n} ${unit}${n === 1 ? "" : "s"}`;
+}
+
+/** What a routine row says: "Done today", "Done · next Fri, 7 Nov",
+ * "Due today", "Due since Mon · 3 days", "Starts Mon, 3 Nov". */
+export function routineStatus(t: Task) {
+  if (notStarted(t)) return `Starts ${inSentence(routineStart(t))}`;
+  if (doneNow(t))
+    return isEveryDay(t)
+      ? "Done today"
+      : `Done · next ${inSentence(nextRoutineDay(t))}`;
+  const late = routineLate(t);
+  // An every-day routine shows its time instead.
+  if (!late) return isEveryDay(t) ? null : "Due today";
+  return `Due since ${inSentence(routineNow(t))} · ${late} day${late === 1 ? "" : "s"}`;
+}
+
+/** `dayLabel` inside a sentence ("tomorrow", "Fri, 7 Nov"). */
+const inSentence = (d: string) => {
+  const l = dayLabel(d);
+  return l.includes(",") ? l : l.toLowerCase();
+};
+
 /** "Today, 4:30 PM" / "Overdue · 2 days" / "Fri, 9 Oct" / "Every day, 11:00 AM" */
 export function formatDue(t: Task) {
-  if (isDaily(t)) return `Every day, ${formatTime(t.repeatTime!)}`;
+  if (isRoutine(t)) return `${routineLabel(t)}, ${formatTime(t.repeatTime!)}`;
   if (!t.dueDate) return "No due date";
   const time = t.dueTime ? `, ${formatTime(t.dueTime)}` : "";
   if (isOverdue(t)) {

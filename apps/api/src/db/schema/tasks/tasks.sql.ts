@@ -45,11 +45,15 @@ export const tasksTable = pgTable(
     reminder: taskReminderEnum("reminder").notNull().default("inherit"),
     /** Minutes between reminders when `reminder` = custom. */
     reminderMinutes: pg.integer("reminder_minutes"),
-    /** daily = reminds once a day at `repeatTime`, ticked off per day. */
+    /** A routine's unit (daily / weekly / monthly), ticked off per occurrence. */
     repeat: taskRepeatEnum("repeat").notNull().default("off"),
-    /** "HH:mm", with repeat = daily. */
+    /** Every how many days / weeks / months. */
+    repeatEvery: pg.integer("repeat_every").notNull().default(1),
+    /** `yyyy-MM-dd` of the first occurrence (null = the created day). */
+    repeatStart: pg.text("repeat_start"),
+    /** "HH:mm", with a repeat. */
     repeatTime: pg.text("repeat_time"),
-    /** `yyyy-MM-dd` days a daily task was done. */
+    /** `yyyy-MM-dd` occurrences a routine was done. */
     doneDates: pg.jsonb("done_dates").$type<string[]>().notNull().default([]),
     snoozedUntil: pg.timestamp("snoozed_until", { withTimezone: true }),
     lastRemindedAt: pg.timestamp("last_reminded_at", { withTimezone: true }),

@@ -19,6 +19,7 @@ import {
   onOff,
   priorities,
   reminderEveries,
+  repeatFields,
   type Subtask,
   taskReminders,
   taskRepeats,
@@ -166,8 +167,12 @@ export async function replaceAll(userId: number, input: unknown) {
       doneAt: typeof s.doneAt === "string" ? s.doneAt : null,
     }));
     const amount = Number(t.amount);
-    const repeat = oneOf(t.repeat, taskRepeats, "off");
-    const repeatTime = repeat === "daily" ? time(t.repeatTime) : null;
+    const repeating = repeatFields({
+      repeat: oneOf(t.repeat, taskRepeats, "off"),
+      repeatEvery: Number(t.repeatEvery) || 1,
+      repeatStart: date(t.repeatStart),
+      repeatTime: time(t.repeatTime),
+    });
     const doneDates = (Array.isArray(t.doneDates) ? t.doneDates : [])
       .map(date)
       .filter((d): d is string => !!d)
@@ -198,8 +203,7 @@ export async function replaceAll(userId: number, input: unknown) {
           (t.reminderMinutes as number) <= CUSTOM_MINUTES_MAX
             ? (t.reminderMinutes as number)
             : null,
-        repeat: repeatTime ? repeat : "off",
-        repeatTime,
+        ...repeating,
         doneDates,
         snoozedUntil: stamp(t.snoozedUntil),
         lastRemindedAt: stamp(t.lastRemindedAt),

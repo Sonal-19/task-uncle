@@ -1,4 +1,10 @@
-import { type DataState, kindOf, placeTask, statusPatch } from "@/lib/types";
+import {
+  type DataState,
+  kindOf,
+  placeTask,
+  repeatFields,
+  statusPatch,
+} from "@/lib/types";
 import type { OpData } from "./outbox";
 
 /** Whatever part of the data is in the query cache right now. */
@@ -121,11 +127,8 @@ export function applyOp(
               ...(status ? statusPatch(t, status, op.at) : {}),
             };
             if (!next.dueDate) next.dueTime = null;
-            // Same rule as the API: daily only with a time.
-            if (next.repeat !== "daily" || !next.repeatTime) {
-              next.repeat = "off";
-              next.repeatTime = null;
-            }
+            // Same rule as the API: a routine only with a time.
+            Object.assign(next, repeatFields(next));
             // Same rule as the API: a category decides the event.
             if (rest.categoryId !== undefined || rest.eventId !== undefined)
               Object.assign(

@@ -19,6 +19,7 @@ const VIEWS: TaskView[] = [
   "today",
   "overdue",
   "upcoming",
+  "routines",
   "done",
   "all",
 ];
@@ -27,7 +28,7 @@ type TasksSearch = {
   view?: TaskView;
   task?: string;
   action?: "done" | "snooze";
-  /** Daily task: the day a notification's "Mark done" ticks off. */
+  /** Routine: the occurrence a notification's "Mark done" ticks off. */
   day?: string;
 };
 
@@ -116,6 +117,7 @@ function TasksPage() {
           { value: "today", label: `Today ${count("today")}` },
           { value: "overdue", label: `Overdue ${count("overdue")}` },
           { value: "upcoming", label: "Upcoming" },
+          { value: "routines", label: `Routines ${count("routines")}` },
           { value: "done", label: "Done" },
           { value: "all", label: "All" },
         ]}
@@ -184,7 +186,9 @@ function TasksPage() {
                 ? "Nothing overdue — shabash! 🎉"
                 : view === "done"
                   ? "Nothing completed yet"
-                  : "No tasks here"
+                  : view === "routines"
+                    ? "No routines yet"
+                    : "No tasks here"
             }
           />
         }

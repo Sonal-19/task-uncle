@@ -17,9 +17,10 @@ export const taskReminders = [
   "custom",
 ] as const;
 export const onOff = ["on", "off"] as const;
-/** `daily` = one reminder every day at `repeatTime`, ticked off per day
- * (`doneDates`) until the repeat is turned off. */
-export const taskRepeats = ["off", "daily"] as const;
+/** A routine: the unit it comes back in (every `repeatEvery` days, weeks or
+ * months from `repeatStart`), reminding at `repeatTime` and ticked off per
+ * occurrence (`doneDates`) until the repeat is turned off. */
+export const taskRepeats = ["off", "daily", "weekly", "monthly"] as const;
 
 /** `admin` opens the admin panel (set with `db:make-admin` or by another admin). */
 export const userRoles = ["user", "admin"] as const;
@@ -107,11 +108,16 @@ export type Task = {
   reminder: TaskReminder;
   /** Minutes between reminders when `reminder` is "custom" (else null). */
   reminderMinutes: number | null;
-  /** A daily task stays open; each day is ticked off in `doneDates`. */
+  /** A routine stays open; each occurrence is ticked off in `doneDates`. */
   repeat: TaskRepeat;
-  /** "HH:mm" of the daily reminder (only with repeat = daily). */
+  /** Every how many days / weeks / months (1 with repeat = off). */
+  repeatEvery: number;
+  /** `yyyy-MM-dd` of the first occurrence; sets the weekday / day of the
+   * month. Null = the day it was created. */
+  repeatStart: string | null;
+  /** "HH:mm" of the routine's reminder (only with a repeat). */
   repeatTime: string | null;
-  /** `yyyy-MM-dd` days a daily task was done, oldest first. */
+  /** `yyyy-MM-dd` occurrences of a routine that were done, oldest first. */
   doneDates: string[];
   snoozedUntil: string | null;
   lastRemindedAt: string | null;
@@ -256,9 +262,152 @@ export function checkDay(doneDates: string[], date: string, done: boolean) {
   return (done ? [...rest, date].sort() : rest).slice(-DONE_DATES_MAX);
 }
 
-/** A daily task that is on. */
-export const isDaily = (t: Pick<Task, "repeat" | "repeatTime">) =>
-  t.repeat === "daily" && !!t.repeatTime;
+/** A routine (repeating task) that is on. */
+export const isRoutine = (t: Pick<Task, "repeat" | "repeatTime">) =>
+  t.repeat !== "off" && !!t.repeatTime;
+
+/** Limits of `repeatEvery`. */
+export const REPEAT_EVERY_MAX = 366;
+
+type RepeatFields = Pick<
+  Task,
+  "repeat" | "repeatEvery" | "repeatStart" | "repeatTime"
+>;
+
+/** A routine only with a time; its every / start / time only with a repeat.
+ * The one rule for the API and the web's reducer. */
+export function repeatFields(r: Partial<RepeatFields>): RepeatFields {
+  const repeat = r.repeat ?? "off";
+  if (repeat === "off" || !r.repeatTime)
+    return {
+      repeat: "off",
+      repeatEvery: 1,
+      repeatStart: null,
+      repeatTime: null,
+    };
+  const every = Math.trunc(Number(r.repeatEvery ?? 1)) || 1;
+  return {
+    repeat,
+    repeatEvery: Math.min(Math.max(every, 1), REPEAT_EVERY_MAX),
+    repeatStart: r.repeatStart ?? null,
+    repeatTime: r.repeatTime,
+  };
+}
+
+/* ------------------------------ routines ------------------------------ */
+// A routine comes back on its occurrences: `repeatStart`, then every
+// `repeatEvery` days / weeks / months (a monthly one on the 31st falls on
+// the last day of shorter months). An occurrence stays open until it is
+// ticked off or the next one comes.
+
+type RoutineShape = Pick<
+  Task,
+  "repeat" | "repeatEvery" | "repeatStart" | "createdAt"
+>;
+
+const ymdParts = (ymd: string) => {
+  const [y = 1970, m = 1, d = 1] = ymd.split("-").map(Number);
+  return { y, m, d };
+};
+const utcDay = (y: number, m: number, d: number) =>
+  new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10);
+const dayNumber = (ymd: string) => {
+  const { y, m, d } = ymdParts(ymd);
+  return Date.UTC(y, m - 1, d) / 86_400_000;
+};
+
+/** The first occurrence of a routine. */
+export const routineStart = (t: Pick<Task, "repeatStart" | "createdAt">) =>
+  t.repeatStart ?? t.createdAt.slice(0, 10);
+
+const stepOf = (t: Pick<Task, "repeatEvery">) =>
+  Math.max(1, t.repeatEvery || 1);
+
+/** The `k`-th occurrence (0 = the start). */
+function occurrence(t: RoutineShape, k: number) {
+  const s = ymdParts(routineStart(t));
+  if (t.repeat === "monthly") {
+    const months = s.m - 1 + k * stepOf(t);
+    const y = s.y + Math.floor(months / 12);
+    const m = (((months % 12) + 12) % 12) + 1;
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return utcDay(y, m, Math.min(s.d, last));
+  }
+  const days = stepOf(t) * (t.repeat === "weekly" ? 7 : 1);
+  return utcDay(s.y, s.m, s.d + k * days);
+}
+
+/** Which occurrence `day` falls in (-1 = before the start). */
+function indexOn(t: RoutineShape, day: string) {
+  const start = routineStart(t);
+  if (day < start) return -1;
+  if (t.repeat === "monthly") {
+    const s = ymdParts(start);
+    const d = ymdParts(day);
+    let k = Math.floor(((d.y - s.y) * 12 + d.m - s.m) / stepOf(t));
+    if (occurrence(t, k) > day) k--;
+    return Math.max(k, -1);
+  }
+  const days = stepOf(t) * (t.repeat === "weekly" ? 7 : 1);
+  return Math.floor((dayNumber(day) - dayNumber(start)) / days);
+}
+
+/** The occurrence `day` belongs to (null before the routine starts). */
+export function occurrenceOn(t: RoutineShape, day: string) {
+  const k = indexOn(t, day);
+  return k < 0 ? null : occurrence(t, k);
+}
+
+/** The first occurrence after `day`. */
+export const nextOccurrence = (t: RoutineShape, day: string) =>
+  occurrence(t, indexOn(t, day) + 1);
+
+/** The `n` latest occurrences up to `day`'s, newest first. */
+export function occurrencesUpTo(t: RoutineShape, day: string, n: number) {
+  const k = indexOn(t, day);
+  const out: string[] = [];
+  for (let i = k; i >= 0 && out.length < n; i--) out.push(occurrence(t, i));
+  return out;
+}
+
+/** The occurrence a routine's check ticks on `today`: the open one, or the
+ * first one before the routine starts. */
+export const routineDay = (t: RoutineShape, today: string) =>
+  occurrenceOn(t, today) ?? routineStart(t);
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const ordinal = (n: number) => {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+};
+
+/** "Every day", "Every 15 days", "Every week on Mon", "Every 2 weeks on
+ * Mon", "Every month on the 5th", "Every 3 months on the 31st". */
+export function routineLabel(
+  t: Pick<Task, "repeat" | "repeatEvery" | "repeatStart" | "createdAt">,
+) {
+  const n = stepOf(t);
+  const start = ymdParts(routineStart(t));
+  if (t.repeat === "weekly") {
+    const wd =
+      WEEKDAYS[new Date(Date.UTC(start.y, start.m - 1, start.d)).getUTCDay()];
+    return `Every ${n === 1 ? "week" : `${n} weeks`} on ${wd}`;
+  }
+  if (t.repeat === "monthly")
+    return `Every ${n === 1 ? "month" : `${n} months`} on the ${ordinal(start.d)}`;
+  return `Every ${n === 1 ? "day" : `${n} days`}`;
+}
+
+/** One word for a routine's notifications: "Daily", "Weekly", "Routine". */
+export function routineWord(t: Pick<Task, "repeat" | "repeatEvery">) {
+  if (stepOf(t) !== 1) return "Routine";
+  return t.repeat === "weekly"
+    ? "Weekly"
+    : t.repeat === "monthly"
+      ? "Monthly"
+      : "Daily";
+}
 
 type Place = { eventId: string | null; categoryId: string | null };
 

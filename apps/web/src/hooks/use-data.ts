@@ -13,6 +13,7 @@ import {
   type NotificationLog,
   newId,
   type Person,
+  repeatFields,
   type Settings,
   statusPatch,
   type Task,
@@ -46,6 +47,8 @@ export type TaskInput = Pick<
   | "reminder"
   | "reminderMinutes"
   | "repeat"
+  | "repeatEvery"
+  | "repeatStart"
   | "repeatTime"
 > & { status?: TaskStatus };
 
@@ -197,6 +200,7 @@ export function createTask(v: TaskInput): Task {
   const { status = "pending", ...rest } = v;
   const row: Task = {
     ...rest,
+    ...repeatFields(rest),
     id: newId(),
     status: "pending",
     doneDates: [],
@@ -231,7 +235,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 
 export const setTaskStatus = (id: string, status: TaskStatus) =>
   updateTask(id, { status }, STATUS_LABEL[status]);
-/** Ticks (or unticks) one day of a daily task. Sent as the whole list, like
+/** Ticks (or unticks) one occurrence of a routine. Sent as the whole list, like
  * the checklist, so a replay can't flip it back. */
 export function setTaskDay(id: string, date: string, done: boolean) {
   const task = cached<Task>(keys.tasks, id);

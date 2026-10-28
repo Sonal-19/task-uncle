@@ -1,12 +1,21 @@
-import { addDays, parse } from "date-fns";
-import { doneToday, dueAt, isDueToday, isOverdue, todayStr } from "./format";
-import { isDaily, type Priority, type Task } from "./types";
+import { parse } from "date-fns";
+import {
+  doneNow,
+  dueAt,
+  isDueToday,
+  isOverdue,
+  nextRoutineDay,
+  routineNow,
+  todayStr,
+} from "./format";
+import { isRoutine, type Priority, type Task } from "./types";
 
 export type TaskView =
   | "pending"
   | "today"
   | "overdue"
   | "upcoming"
+  | "routines"
   | "done"
   | "all";
 
@@ -29,6 +38,8 @@ export function matchesView(t: Task, view: TaskView) {
       return isOverdue(t);
     case "upcoming":
       return isOpen(t) && !!t.dueDate && t.dueDate > todayStr();
+    case "routines":
+      return isOpen(t) && isRoutine(t);
     case "done":
       return t.status === "done";
     default:
@@ -36,16 +47,12 @@ export function matchesView(t: Task, view: TaskView) {
   }
 }
 
-/** When a task wants attention next: a daily task today at its time
- * (tomorrow once today is ticked off), others their due time. */
+/** When a task wants attention next: a routine at its open occurrence's
+ * time (the next one once it is ticked off), others their due time. */
 function sortAt(t: Task) {
-  if (!isDaily(t)) return dueAt(t);
-  const at = parse(
-    `${todayStr()} ${t.repeatTime}`,
-    "yyyy-MM-dd HH:mm",
-    new Date(),
-  );
-  return doneToday(t) ? addDays(at, 1) : at;
+  if (!isRoutine(t)) return dueAt(t);
+  const day = doneNow(t) ? nextRoutineDay(t) : routineNow(t);
+  return parse(`${day} ${t.repeatTime}`, "yyyy-MM-dd HH:mm", new Date());
 }
 
 /** Open tasks: overdue first, then by due time, then priority. Done: latest first. */

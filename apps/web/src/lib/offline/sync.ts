@@ -246,6 +246,8 @@ async function send(op: Op) {
           reminder: r.reminder,
           reminderMinutes: r.reminderMinutes,
           repeat: r.repeat,
+          repeatEvery: r.repeatEvery,
+          repeatStart: r.repeatStart,
           repeatTime: r.repeatTime,
           doneDates: r.doneDates,
           editedAt: op.at,

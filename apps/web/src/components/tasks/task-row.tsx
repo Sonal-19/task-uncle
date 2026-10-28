@@ -21,20 +21,24 @@ import {
 } from "@/hooks/use-data";
 import { useIsTouch } from "@/hooks/use-media-query";
 import {
-  doneToday,
+  doneNow,
   formatAmount,
   formatDue,
+  isEveryDay,
   isOverdue,
+  routineLate,
+  routineNow,
+  routineStatus,
   streakOf,
+  streakUnit,
   timeAgo,
-  todayStr,
 } from "@/lib/format";
-import { isDaily, type Task } from "@/lib/types";
+import { isRoutine, type Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSheets } from "@/stores/sheet-store";
 
-/** Round check that marks a task done (or reopens it). A daily task's
- * check ticks off today only; the task stays and comes back tomorrow. */
+/** Round check that marks a task done (or reopens it). A routine's check
+ * ticks off its current occurrence only; the task stays and comes back. */
 export function TaskCheck({
   task,
   className,
@@ -44,16 +48,17 @@ export function TaskCheck({
 }) {
   const setStatus = useSetTaskStatus();
   const setDay = useSetTaskDay();
-  const daily = isDaily(task) && task.status !== "done";
-  const done = daily ? doneToday(task) : task.status === "done";
+  const daily = isRoutine(task) && task.status !== "done";
+  const done = daily ? doneNow(task) : task.status === "done";
+  const when = isEveryDay(task) ? "today" : "this time";
   return (
     <button
       type="button"
       aria-label={
         daily
           ? done
-            ? "Mark today as not done"
-            : "Mark today as done"
+            ? `Mark ${when} as not done`
+            : `Mark ${when} as done`
           : done
             ? "Mark as pending"
             : "Mark as done"
@@ -61,7 +66,7 @@ export function TaskCheck({
       onClick={(e) => {
         e.stopPropagation();
         if (daily)
-          setDay.mutate({ id: task.id, date: todayStr(), done: !done });
+          setDay.mutate({ id: task.id, date: routineNow(task), done: !done });
         else
           setStatus.mutate({
             id: task.id,
@@ -111,8 +116,10 @@ export function TaskRow({
   const cat = task.categoryId ? categoryById.get(task.categoryId) : undefined;
   const who = task.assigneeId ? personById.get(task.assigneeId) : undefined;
   const done = task.status === "done";
-  const daily = isDaily(task) && !done;
-  const today = daily && doneToday(task);
+  const daily = isRoutine(task) && !done;
+  const today = daily && doneNow(task);
+  const late = daily ? routineLate(task) : 0;
+  const routineText = daily ? routineStatus(task) : null;
   const streak = daily ? streakOf(task) : 0;
   const overdue = isOverdue(task);
   const snoozed =
@@ -122,7 +129,8 @@ export function TaskRow({
   function onDragEnd() {
     const dx = x.get();
     if (dx > SWIPE && daily) {
-      if (!today) setDay.mutate({ id: task.id, date: todayStr(), done: true });
+      if (!today)
+        setDay.mutate({ id: task.id, date: routineNow(task), done: true });
     } else if (dx > SWIPE && !done) {
       setStatus.mutate({ id: task.id, status: "done", prev: task.status });
     } else if (dx < -SWIPE && !done) {
@@ -207,18 +215,15 @@ export function TaskRow({
                 className={cn(
                   "flex items-center gap-1",
                   today && "font-medium text-done",
+                  late > 0 && "font-semibold text-overdue",
                 )}
               >
                 {today ? (
-                  <>
-                    <Check className="size-3.5" /> Done today
-                  </>
+                  <Check className="size-3.5" />
                 ) : (
-                  <>
-                    <Repeat className="size-3.5" />
-                    {formatDue(task)}
-                  </>
+                  <Repeat className="size-3.5" />
                 )}
+                {routineText ?? formatDue(task)}
               </span>
             ) : done && task.completedAt ? (
               <span className="flex items-center gap-1 text-done">
@@ -238,7 +243,7 @@ export function TaskRow({
             {streak > 1 && (
               <span className="flex items-center gap-0.5 font-semibold text-orange-500">
                 <Flame className="size-3.5" />
-                {streak} days
+                {streakUnit(task, streak)}
               </span>
             )}
             {task.status === "in_progress" && (
